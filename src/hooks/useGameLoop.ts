@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react'
-
+import { TICK_RATE } from '../data/balance.ts'
 
 export function useGameLoop(tick: () => void) {
   const tickRef = useRef(tick)
@@ -8,7 +8,7 @@ export function useGameLoop(tick: () => void) {
   useEffect(() => {
     const id = setInterval(() => {
       tickRef.current()
-    }, 100)
+    }, TICK_RATE)
 
     return () => clearInterval(id)
   }, [])

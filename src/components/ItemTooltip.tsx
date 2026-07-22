@@ -1,3 +1,4 @@
+import { rarityTextClass, rarityBorderClass } from '../types/item.ts'
 import type { Item } from '../types/item.ts'
 
 interface ItemTooltipProps {
@@ -5,29 +6,11 @@ interface ItemTooltipProps {
   compact?: boolean
 }
 
-const rarityColor = (rarity: Item['rarity']) => {
-  switch (rarity) {
-    case 'magic': return 'text-blue-400'
-    case 'rare': return 'text-yellow-400'
-    case 'unique': return 'text-orange-400'
-    default: return 'text-gray-300'
-  }
-}
-
-const rarityBorder = (rarity: Item['rarity']) => {
-  switch (rarity) {
-    case 'magic': return 'border-blue-900/50'
-    case 'rare': return 'border-yellow-900/50'
-    case 'unique': return 'border-orange-900/50'
-    default: return 'border-[#2e303a]'
-  }
-}
-
 export function ItemTooltip({ item, compact }: ItemTooltipProps) {
   return (
-    <div className={`bg-[#0b0c10] border ${rarityBorder(item.rarity)} p-3 rounded shadow-2xl max-w-xs ${compact ? 'text-xs' : 'text-sm'}`}>
+    <div className={`bg-[#0b0c10] border ${rarityBorderClass(item.rarity)} p-3 rounded shadow-2xl max-w-xs ${compact ? 'text-xs' : 'text-sm'}`}>
       {/* Header */}
-      <div className={`font-bold ${rarityColor(item.rarity)} ${compact ? 'text-sm' : 'text-base'} mb-0.5`}>
+      <div className={`font-bold ${rarityTextClass(item.rarity)} ${compact ? 'text-sm' : 'text-base'} mb-0.5`}>
         {item.name}
       </div>
       <div className="text-xs text-gray-500 mb-2">

@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useGameStore } from '../store/gameStore.ts'
 import { ItemTooltip } from './ItemTooltip.tsx'
 import { CURRENCIES } from '../data/currencies.ts'
+import { rarityTextClass } from '../types/item.ts'
 import type { Item } from '../types/item.ts'
 
 export function InventoryPanel() {
@@ -14,13 +15,6 @@ export function InventoryPanel() {
 
   const [selectedItem, setSelectedItem] = useState<Item | null>(null)
   const [hoveredItem, setHoveredItem] = useState<Item | null>(null)
-
-  const rarityColors = {
-    normal: 'text-gray-300',
-    magic: 'text-blue-400',
-    rare: 'text-yellow-400',
-    unique: 'text-orange-400',
-  }
 
   return (
     <div className="space-y-4">
@@ -57,11 +51,12 @@ export function InventoryPanel() {
             onClick={() => setSelectedItem(item)}
             onMouseEnter={() => setHoveredItem(item)}
             onMouseLeave={() => setHoveredItem(null)}
-            className={`relative aspect-square bg-[#1f2028] border border-[#2e303a] rounded p-1 text-xs text-left hover:bg-[#2e303a] ${
-              selectedItem?.id === item.id ? 'border-[#d4a017]' : ''
+            className={`relative aspect-square bg-[#1f2028] border rounded p-1 text-xs text-left hover:bg-[#2e303a] transition-colors ${
+              selectedItem?.id === item.id ? 'border-[#d4a017]' : 'border-[#2e303a]'
             }`}
+            style={selectedItem?.id === item.id ? undefined : { borderColor: 'rgba(46,48,58,1)' }}
           >
-            <div className={`truncate ${rarityColors[item.rarity]}`}>{item.name}</div>
+            <div className={`truncate ${rarityTextClass(item.rarity)}`}>{item.name}</div>
             <div className="text-[10px] text-gray-500">iLvl {item.itemLevel}</div>
             {hoveredItem?.id === item.id && (
               <div className="absolute z-50 left-1/2 -translate-x-1/2 bottom-full mb-1 w-56">
@@ -104,6 +99,10 @@ export function InventoryPanel() {
             ))}
           </div>
         </div>
+      )}
+
+      {inventory.items.length === 0 && (
+        <div className="text-sm text-gray-500 italic">No items yet — monsters drop loot on death.</div>
       )}
     </div>
   )

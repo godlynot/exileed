@@ -98,4 +98,11 @@ export const BASE_ITEMS: Record<string, BaseItem> = {
   },
 }
 
-export const STARTER_ITEMS = ['rusted_axe', 'worn_shield', 'tattered_hood', 'battered_chest', 'fingerless_gloves', 'worn_boots', 'rope_belt', 'seashell_amulet', 'iron_ring']
+export const STARTER_ITEMS: Record<string, string[]> = {
+  brute: ['rusted_axe', 'worn_shield', 'tattered_hood', 'battered_chest', 'fingerless_gloves', 'worn_boots', 'rope_belt', 'seashell_amulet', 'iron_ring'],
+  stalker: ['crude_dagger', 'worn_shield', 'tattered_hood', 'battered_chest', 'fingerless_gloves', 'worn_boots', 'rope_belt', 'seashell_amulet', 'iron_ring'],
+  acolyte: ['splintered_wand', 'worn_shield', 'tattered_hood', 'battered_chest', 'fingerless_gloves', 'worn_boots', 'rope_belt', 'seashell_amulet', 'iron_ring'],
+  warlord: ['rusted_axe', 'worn_shield', 'tattered_hood', 'battered_chest', 'fingerless_gloves', 'worn_boots', 'rope_belt', 'seashell_amulet', 'iron_ring'],
+  plaguebringer: ['crude_dagger', 'worn_shield', 'tattered_hood', 'battered_chest', 'fingerless_gloves', 'worn_boots', 'rope_belt', 'seashell_amulet', 'iron_ring'],
+  oracle: ['splintered_wand', 'worn_shield', 'tattered_hood', 'battered_chest', 'fingerless_gloves', 'worn_boots', 'rope_belt', 'seashell_amulet', 'iron_ring'],
+}

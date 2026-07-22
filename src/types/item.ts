@@ -13,6 +13,32 @@ export type ItemSlot =
 
 export type ItemRarity = 'normal' | 'magic' | 'rare' | 'unique'
 
+export const RARITY_COLORS: Record<ItemRarity, string> = {
+  normal: '#c8c8c8',
+  magic: '#6a8fd8',
+  rare: '#d9c95a',
+  unique: '#c96a2e',
+}
+
+export function rarityTextClass(rarity: ItemRarity): string {
+  switch (rarity) {
+    case 'magic': return 'text-blue-400'
+    case 'rare': return 'text-yellow-400'
+    case 'unique': return 'text-orange-400'
+    default: return 'text-gray-300'
+  }
+}
+
+export function rarityBorderClass(rarity: ItemRarity): string {
+  switch (rarity) {
+    case 'magic': return 'border-blue-500/50'
+    case 'rare': return 'border-yellow-500/50'
+    case 'unique': return 'border-orange-500/50'
+    default: return 'border-gray-600'
+  }
+}
+
+
 export interface Affix {
   id: string
   type: 'prefix' | 'suffix'
@@ -70,6 +96,9 @@ export interface Item {
   // Utility
   movementSpeed: number
   increasedArmourPercent: number
+  increasedEvasionPercent: number
+  increasedAccuracyPercent: number
+  increasedEsPercent: number
   increasedMaxLifePercent: number
   damageVsBossesPercent: number
   goldFindPercent: number
@@ -135,6 +164,9 @@ export interface EquipmentBonus {
   chanceToInflictDespair: number
   movementSpeed: number
   increasedArmourPercent: number
+  increasedEvasionPercent: number
+  increasedAccuracyPercent: number
+  increasedEsPercent: number
   increasedMaxLifePercent: number
   damageVsBossesPercent: number
   goldFindPercent: number

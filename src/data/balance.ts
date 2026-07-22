@@ -1,31 +1,33 @@
 // All tuning constants live here so designers can tweak without touching logic.
 
-export const TICK_RATE = 100 // ms per tick (10 ticks/sec)
-export const TICKS_PER_SECOND = 10
+export const TICK_RATE = 200 // ms per tick (5 ticks/sec)
+export const TICKS_PER_SECOND = 5
 export const OFFLINE_PROGRESS_MAX_HOURS = 8
 export const OFFLINE_PROGRESS_CHUNK_HOURS = 1
 
 export const CHARACTER = {
   MAX_LEVEL: 90,
   BASE_LIFE: 50,
-  LIFE_PER_STRENGTH: 0.5,
-  BASE_ENERGY_SHIELD: 0,
-  ES_PER_INTELLIGENCE: 0.5,
-  BASE_ACCURACY: 100,
+  LIFE_PER_STRENGTH: 2,          // +2 life per point of strength
+  ES_PER_INTELLIGENCE: 2,         // +2 energy shield per point of intelligence
+  ACCURACY_PER_DEXTERITY: 2,      // +2 accuracy per point of dexterity
+  BASE_ACCURACY: 200,
   BASE_EVASION: 50,
   RESPAWN_TIME_SECONDS: 5,
   XP_DEATH_PENALTY: 0.1,
   ATTRIBUTE_BONUS: {
-    STR_MELEE_DAMAGE_PERCENT: 2, // +2% melee damage per 10 str
-    DEX_ATTACK_SPEED_PERCENT: 2,   // +2% attack speed per 10 dex
-    INT_SPELL_DAMAGE_PERCENT: 2,   // +2% spell damage per 10 int
+    STR_MELEE_DAMAGE_PERCENT: 0.5, // +0.5% increased melee physical damage per 10 str
+    DEX_EVASION_PERCENT: 0.5,      // +0.5% increased evasion per 10 dex
+    INT_SPELL_DAMAGE_PERCENT: 0.5, // +0.5% increased spell damage per 10 int
   },
 } as const
 
 export const DAMAGE = {
-  CRITICAL_CHANCE_CAP: 0.75, // 75%
+  CRITICAL_CHANCE_CAP: 1.0, // 100%
   DEFAULT_CRIT_MULTIPLIER: 1.5,
-  EVASION_CAP: 0.75,
+  EVASION_CAP: 0.95,
+  EVASION_STREAK_BONUS_PER_STACK: 0.10, // +10% flat hit chance per consecutive dodge
+  EVASION_STREAK_BONUS_MAX: 0.50,       // capped at +50% hit chance
   RESISTANCE_CAP: 0.75,
   ARMOUR_MITIGATION_DENOMINATOR: 5,
 } as const
@@ -34,6 +36,12 @@ export const EXPERIENCE = {
   BASE_XP: 100,
   XP_EXPONENT: 1.6,
   XP_PENALTY_PER_LEVEL_ABOVE: 0.05,
+} as const
+
+export const RECOVERY = {
+  LIFE_REGEN_PERCENT_PER_SECOND: 0.02, // 2% life per second
+  ES_RECHARGE_PERCENT_PER_SECOND: 0.25, // 25% ES per second
+  ES_RECHARGE_DELAY_SECONDS: 3,          // 3 seconds before ES recharges
 } as const
 
 export const MONSTER = {

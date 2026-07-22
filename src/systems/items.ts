@@ -1,9 +1,9 @@
 import type { Affix, AffixDefinition, Equipment, EquipmentBonus, Item, ItemRarity, ItemSlot } from '../types/item.ts'
-import type { Attributes, Character } from '../types/game.ts'
+import type { Attributes, Character, ClassId } from '../types/game.ts'
 import { BASE_ITEMS } from '../data/items.ts'
 import { ALL_AFFIXES } from '../data/affixes.ts'
 import { CLASSES } from '../data/classes.ts'
-import { CHARACTER } from '../data/balance.ts'
+import { CHARACTER, DAMAGE, RECOVERY } from '../data/balance.ts'
 
 let itemIdCounter = 0
 
@@ -80,6 +80,9 @@ export function recalculateItem(item: Item): Item {
     chanceToInflictDespair: 0,
     movementSpeed: 0,
     increasedArmourPercent: 0,
+    increasedEvasionPercent: 0,
+    increasedAccuracyPercent: 0,
+    increasedEsPercent: 0,
     increasedMaxLifePercent: 0,
     damageVsBossesPercent: 0,
     goldFindPercent: 0,
@@ -187,6 +190,9 @@ export function createItem(baseId: string, itemLevel: number, rarity: ItemRarity
     chanceToInflictDespair: 0,
     movementSpeed: 0,
     increasedArmourPercent: 0,
+    increasedEvasionPercent: 0,
+    increasedAccuracyPercent: 0,
+    increasedEsPercent: 0,
     increasedMaxLifePercent: 0,
     damageVsBossesPercent: 0,
     goldFindPercent: 0,
@@ -231,6 +237,9 @@ export function calculateEquipmentBonus(equipment: Equipment): EquipmentBonus {
     chanceToInflictDespair: 0,
     movementSpeed: 0,
     increasedArmourPercent: 0,
+    increasedEvasionPercent: 0,
+    increasedAccuracyPercent: 0,
+    increasedEsPercent: 0,
     increasedMaxLifePercent: 0,
     damageVsBossesPercent: 0,
     goldFindPercent: 0,
@@ -319,12 +328,21 @@ export function calculateEquipmentBonus(equipment: Equipment): EquipmentBonus {
         case 'movementSpeed':
           bonus.movementSpeed += value / 100
           break
-        case 'increasedArmourPercent':
-          bonus.increasedArmourPercent += value
-          break
-        case 'increasedMaxLifePercent':
-          bonus.increasedMaxLifePercent += value
-          break
+      case 'increasedArmourPercent':
+        bonus.increasedArmourPercent += value
+        break
+      case 'increasedEvasionPercent':
+        bonus.increasedEvasionPercent += value
+        break
+      case 'increasedAccuracyPercent':
+        bonus.increasedAccuracyPercent += value
+        break
+      case 'increasedEsPercent':
+        bonus.increasedEsPercent += value
+        break
+      case 'increasedMaxLifePercent':
+        bonus.increasedMaxLifePercent += value
+        break
         case 'damageVsBossesPercent':
           bonus.damageVsBossesPercent += value
           break
@@ -339,7 +357,7 @@ export function calculateEquipmentBonus(equipment: Equipment): EquipmentBonus {
 }
 
 export function recalculateCharacterFromEquipment(character: Character, equipment: Equipment): Character {
-  const gameClass = CLASSES[character.classId]
+  const gameClass = CLASSES[character.classId as ClassId]
   const bonus = calculateEquipmentBonus(equipment)
 
   const attributes: Attributes = {
@@ -348,17 +366,47 @@ export function recalculateCharacterFromEquipment(character: Character, equipmen
     intelligence: gameClass.baseAttributes.intelligence + bonus.attributes.intelligence,
   }
 
-  const flatMaxLife = gameClass.baseLife + attributes.strength * CHARACTER.LIFE_PER_STRENGTH + bonus.life
+  const levelBonusLife = (character.level - 1) * 6
+  const levelBonusES = (character.level - 1) * 6
+  const flatMaxLife = gameClass.baseLife + attributes.strength * CHARACTER.LIFE_PER_STRENGTH + bonus.life + levelBonusLife
   const maxLife = Math.floor(flatMaxLife * (1 + bonus.increasedMaxLifePercent / 100))
   const maxEnergyShield = Math.floor(
-    gameClass.baseEnergyShield + attributes.intelligence * CHARACTER.ES_PER_INTELLIGENCE + bonus.energyShield,
+    (gameClass.baseEnergyShield + attributes.intelligence * CHARACTER.ES_PER_INTELLIGENCE + bonus.energyShield + levelBonusES) *
+    (1 + bonus.increasedEsPercent / 100),
   )
 
   const weapon = equipment.weapon
   const baseWeaponMin = weapon ? weapon.physicalDamageMin : 0
   const baseWeaponMax = weapon ? weapon.physicalDamageMax : 0
 
-  const attackRate = (weapon ? weapon.attackRate : 1.0) + bonus.attackRate
+  // Attribute-derived bonuses
+  const strBuckets = Math.floor(attributes.strength / 10)
+  const dexBuckets = Math.floor(attributes.dexterity / 10)
+  const intBuckets = Math.floor(attributes.intelligence / 10)
+
+  const increasedMeleeDamage = strBuckets * CHARACTER.ATTRIBUTE_BONUS.STR_MELEE_DAMAGE_PERCENT / 100
+  const increasedEvasion = dexBuckets * CHARACTER.ATTRIBUTE_BONUS.DEX_EVASION_PERCENT / 100
+  const increasedSpellDamage = intBuckets * CHARACTER.ATTRIBUTE_BONUS.INT_SPELL_DAMAGE_PERCENT / 100
+
+  const accuracy = (gameClass.baseAccuracy + character.level * 15 + attributes.dexterity * CHARACTER.ACCURACY_PER_DEXTERITY + bonus.accuracy) *
+    (1 + bonus.increasedAccuracyPercent / 100)
+
+  const armour = Math.floor((bonus.armour) * (1 + bonus.increasedArmourPercent / 100))
+  const evasion = Math.floor((gameClass.baseEvasion + bonus.evasion) *
+    (1 + bonus.increasedEvasionPercent / 100 + increasedEvasion))
+
+  const increasedAttackSpeed = bonus.attackRate // already in attacks/sec from affixes
+  const attackRate = (weapon ? weapon.attackRate : 1.0) * (1 + increasedAttackSpeed)
+
+  // Base weapon damage scaled by level
+  const levelMultiplier = 1 + (character.level - 1) * 0.01
+  const basePhysicalDamageMin = Math.floor((baseWeaponMin + bonus.physicalDamageMin) * levelMultiplier)
+  const basePhysicalDamageMax = Math.floor((baseWeaponMax + bonus.physicalDamageMax) * levelMultiplier)
+
+  // Recovery per tick (5 ticks per second)
+  const ticksPerSecond = 5
+  const lifeRegen = Math.max(0, maxLife * RECOVERY.LIFE_REGEN_PERCENT_PER_SECOND / ticksPerSecond)
+  const esRecharge = Math.max(0, maxEnergyShield * RECOVERY.ES_RECHARGE_PERCENT_PER_SECOND / ticksPerSecond)
 
   return {
     ...character,
@@ -367,13 +415,24 @@ export function recalculateCharacterFromEquipment(character: Character, equipmen
     maxEnergyShield,
     life: Math.min(character.life, maxLife),
     energyShield: Math.min(character.energyShield, maxEnergyShield),
-    accuracy: gameClass.baseAccuracy + bonus.accuracy,
-    evasion: gameClass.baseEvasion + bonus.evasion + bonus.armour, // simple armour adds evasion for now
+    accuracy,
+    evasion,
+    armour,
     attackRate: Math.max(0.2, attackRate),
-    basePhysicalDamageMin: baseWeaponMin + bonus.physicalDamageMin,
-    basePhysicalDamageMax: baseWeaponMax + bonus.physicalDamageMax,
-    criticalChance: clamp(character.criticalChance + bonus.criticalChance, 0, 0.75),
+    basePhysicalDamageMin,
+    basePhysicalDamageMax,
+    criticalChance: clamp(character.criticalChance + bonus.criticalChance, 0, DAMAGE.CRITICAL_CHANCE_CAP),
     criticalMultiplier: character.criticalMultiplier + bonus.criticalMultiplier,
+    increasedPhysicalDamage: increasedMeleeDamage,
+    morePhysicalDamage: 1,
+    increasedSpellDamage: increasedSpellDamage,
+    moreSpellDamage: 1,
+    increasedAttackSpeed: 0,
+    moreAttackSpeed: 1,
+    increasedAccuracy: 0,
+    lifeRegen,
+    esRecharge,
+    special: {},
     resistances: {
       fire: clamp(character.resistances.fire + bonus.resistances.fire, -0.75, 0.75),
       cold: clamp(character.resistances.cold + bonus.resistances.cold, -0.75, 0.75),
@@ -428,19 +487,25 @@ export function applyOrb(item: Item, currencyId: string): Item {
   return recalculateItem(result)
 }
 
-export function determineDropRarity(zoneLevel: number): ItemRarity {
+export interface DropModifiers {
+  rarityBonus?: { rare: number; magic: number }
+  extraDropChance?: number
+}
+
+export function determineDropRarity(zoneLevel: number, modifiers: DropModifiers = {}): ItemRarity {
   const roll = Math.random()
-  const rareChance = 0.03 + zoneLevel * 0.002
-  const magicChance = 0.15 + zoneLevel * 0.005
+  const bonus = modifiers.rarityBonus ?? { rare: 0, magic: 0 }
+  const rareChance = 0.03 + zoneLevel * 0.002 + bonus.rare
+  const magicChance = 0.15 + zoneLevel * 0.005 + bonus.magic
   if (roll < rareChance) return 'rare'
   if (roll < rareChance + magicChance) return 'magic'
   return 'normal'
 }
 
-export function dropItem(zoneLevel: number): Item | null {
+export function dropItem(zoneLevel: number, modifiers: DropModifiers = {}): Item | null {
   const baseIds = Object.keys(BASE_ITEMS)
   if (baseIds.length === 0) return null
   const baseId = baseIds[Math.floor(Math.random() * baseIds.length)]
-  const rarity = determineDropRarity(zoneLevel)
+  const rarity = determineDropRarity(zoneLevel, modifiers)
   return createItem(baseId, zoneLevel, rarity)
 }

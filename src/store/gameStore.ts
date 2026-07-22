@@ -1,21 +1,34 @@
 import { create } from 'zustand'
 import type { Character, CombatState, GameState, Monster, Zone } from '../types/game.ts'
 import type { Equipment, InventoryState, Item } from '../types/item.ts'
-import { CLASSES } from '../data/classes.ts'
+import { CLASSES, CLASS_ROOT_MAP } from '../data/classes.ts'
+import type { ClassId } from '../types/game.ts'
 import { ZONES, MONSTERS } from '../data/zones.ts'
-import { TICKS_PER_SECOND } from '../data/balance.ts'
-import { processCombatTick } from '../systems/combat.ts'
-import { addExperience } from '../systems/xp.ts'
+import { TICKS_PER_SECOND, experienceForLevel } from '../data/balance.ts'
+import { PASSIVE_TREE } from '../data/passiveTree.ts'
+import { TRIALS, ASCENDANCIES } from '../data/ascendancies.ts'
+import { applyPassiveStats, applyAscendancyStats, allocateNode, refundNode } from '../systems/passives.ts'
+import { simulateTick } from '../systems/combat.ts'
 import { saveGame, exportSave as exportSaveString, importSave } from '../systems/save.ts'
 import { BASE_ITEMS, STARTER_ITEMS } from '../data/items.ts'
-import { createItem, dropItem, applyOrb, recalculateCharacterFromEquipment } from '../systems/items.ts'
+import { createItem, applyOrb, recalculateCharacterFromEquipment } from '../systems/items.ts'
 
 const SAVE_INTERVAL_TICKS = TICKS_PER_SECOND * 30
 
-function createDefaultCharacter(classId: string): Character {
+const STARTER_SKILL_BY_CLASS: Record<ClassId, string> = {
+  brute: 'strike',
+  stalker: 'poison_strike',
+  acolyte: 'firebolt',
+  oracle: 'firebolt',
+  warlord: 'strike',
+  plaguebringer: 'poison_strike',
+}
+
+function createDefaultCharacter(classId: ClassId): Character {
   const gameClass = CLASSES[classId]
   const life = gameClass.baseLife
   return {
+    id: 'player_1',
     name: 'Exile',
     classId,
     level: 1,
@@ -29,15 +42,64 @@ function createDefaultCharacter(classId: string): Character {
     resistances: { fire: 0, cold: 0, lightning: 0, chaos: 0 },
     accuracy: gameClass.baseAccuracy,
     evasion: gameClass.baseEvasion,
+    armour: gameClass.baseAttributes.strength * 2,
     attackRate: 1.0,
     basePhysicalDamageMin: 2,
     basePhysicalDamageMax: 4,
     criticalChance: 0.05,
     criticalMultiplier: 1.5,
+    special: {},
     isAlive: true,
     respawnTimer: 0,
-    allocatedNodes: [],
+    allocatedNodes: [`root_${CLASS_ROOT_MAP[classId as ClassId]}`],
+    passivePoints: 0,
+    ascendancyId: null,
+    allocatedAscendancyNodes: [],
+    keystoneChoices: {},
+    ascendancyPoints: 0,
+    trial1Completed: false,
+    trial2Completed: false,
+    trial3Completed: false,
+    trial4Completed: false,
+    devOverrides: {},
+    equippedSkills: [{ skillId: STARTER_SKILL_BY_CLASS[classId], supportIds: [], cooldownRemaining: 0, hitCounter: 0 }],
+    ownedGems: [
+      STARTER_SKILL_BY_CLASS[classId],
+      ...(['brute', 'stalker', 'warlord'].includes(classId) ? ['slash', 'added_physical_damage'] : []),
+      ...(['acolyte', 'oracle'].includes(classId) ? ['ice_nova', 'added_fire_damage'] : []),
+      ...(['plaguebringer'].includes(classId) ? ['essence_drain', 'ailment_magnitude'] : []),
+    ].map(id => ({ id, level: 1, xp: 0 })),
+    supportSlotCount: 2,
+    increasedPhysicalDamage: 0,
+    morePhysicalDamage: 1,
+    increasedSpellDamage: 0,
+    moreSpellDamage: 1,
+    increasedAttackSpeed: 0,
+    moreAttackSpeed: 1,
+    increasedAccuracy: 0,
+    lifeRegen: 0,
+    esRecharge: 0,
   }
+}
+
+function applyDevOverrides(character: Character): Character {
+  if (!character.devOverrides || Object.keys(character.devOverrides).length === 0) {
+    return character
+  }
+  const merged = { ...character, ...character.devOverrides }
+  return {
+    ...merged,
+    life: Math.min(merged.life, merged.maxLife),
+    energyShield: Math.min(merged.energyShield, merged.maxEnergyShield),
+  }
+}
+
+function recalcCharacter(state: GameState, character: Character): Character {
+  let c = recalculateCharacterFromEquipment(character, state.equipment)
+  c = applyPassiveStats(c, state.passiveTree)
+  c = applyAscendancyStats(c)
+  c = applyDevOverrides(c)
+  return c
 }
 
 function createInitialEquipment(): Equipment {
@@ -81,7 +143,9 @@ function createInitialCurrencies(): Record<string, number> {
 }
 
 function createInitialCombat(zone: Zone): CombatState {
-  const monsterTemplate = MONSTERS[zone.monsterId]
+  const pool = zone.monsterIds.length > 0 ? zone.monsterIds : zone.monsterId ? [zone.monsterId] : []
+  const id = pool[Math.floor(Math.random() * pool.length)]
+  const monsterTemplate = MONSTERS[id]
   const monster: Monster = {
     ...monsterTemplate,
     life: monsterTemplate.maxLife,
@@ -94,12 +158,23 @@ function createInitialCombat(zone: Zone): CombatState {
     combatLog: [],
     isRespawning: false,
     respawnTicks: 0,
+    events: [],
+    ticksSinceDamageTaken: 0,
+    playerEvasionStacks: 0,
+    monsterEvasionStacks: 0,
+    momentum: { stacks: 0, decayTicks: 0, baseCap: 10, capBonus: 0 },
+    herald: { active: [], tideRamp: 0, hitTargets: [] },
+    marshal: { army: null, bulwarkFlat: 0, bulwarkTicksRemaining: 0 },
+    delayedDamageQueue: [],
+    ailments: {},
+    virulent: { stacks: {}, septicemiaMultiplier: {}, calcifyAccumulator: {}, slow: {}, patientZeroTarget: null },
   }
 }
 
-function createStarterEquipment(): Equipment {
+function createStarterEquipment(classId: string): Equipment {
   const equipment = createInitialEquipment()
-  for (const baseId of STARTER_ITEMS) {
+  const starterIds = STARTER_ITEMS[classId] ?? STARTER_ITEMS['warlord']
+  for (const baseId of starterIds) {
     const base = BASE_ITEMS[baseId]
     const item = createItem(baseId, 1, 'normal')
     if (base.slot === 'ring' && !equipment.ring1) equipment.ring1 = item
@@ -109,14 +184,15 @@ function createStarterEquipment(): Equipment {
   return equipment
 }
 
-export function createInitialState(): GameState {
+export function createInitialState(classId: ClassId = 'warlord'): GameState {
   const zones = ZONES.map(z => ({ ...z }))
   const activeZoneId = zones[0].id
-  const equipment = createStarterEquipment()
-  const character = createDefaultCharacter('brute')
-  const recalculated = recalculateCharacterFromEquipment(character, equipment)
+  const equipment = createStarterEquipment(classId)
+  let character = createDefaultCharacter(classId)
+  character = recalculateCharacterFromEquipment(character, equipment)
+  character = applyPassiveStats(character, PASSIVE_TREE)
   return {
-    character: { ...recalculated, life: recalculated.maxLife, energyShield: recalculated.maxEnergyShield },
+    character: { ...character, life: character.maxLife, energyShield: character.maxEnergyShield },
     zones,
     activeZoneId,
     inventory: createInitialInventory(),
@@ -125,6 +201,9 @@ export function createInitialState(): GameState {
     combat: createInitialCombat(zones[0]),
     lastSaveTime: Date.now(),
     saveVersion: 1,
+    passiveTree: PASSIVE_TREE,
+    gamePhase: 'class-select',
+    activeTrial: null,
   }
 }
 
@@ -136,80 +215,41 @@ interface GameActions {
   sellItem: (itemId: string) => void
   useCurrency: (itemId: string, currencyId: string) => void
   toggleAutoSell: (type: 'normal' | 'magic') => void
+  allocateNode: (nodeId: string) => void
+  refundNode: (nodeId: string) => void
+  selectAscendancy: (ascendancyId: string) => void
+  allocateAscendancyNode: (nodeId: string) => void
+  setAscendancyChoice: (nodeId: string, choiceId: string) => void
+  startTrial: (trialId: string) => void
+  startGame: (classId: ClassId) => void
+  equipSkill: (skillId: string, slotIndex: number) => void
+  unequipSkill: (slotIndex: number) => void
+  equipSupport: (supportId: string, slotIndex: number) => void
+  unequipSupport: (skillSlotIndex: number, supportSlotIndex: number) => void
   exportSave: () => string
   importSave: (data: string) => void
   resetGame: () => void
+  devSetLevel: (level: number) => void
+  devSetStats: (stats: Partial<Character>) => void
 }
 
 export const useGameStore = create<GameState & GameActions>((set, get) => ({
-  ...createInitialState(),
+  ...createInitialState('warlord'),
 
   tick: () => {
     set(state => {
-      const zone = state.zones.find(z => z.id === state.activeZoneId)
-      if (!zone) return state
+      const { state: nextState, events } = simulateTick(state)
 
-      const result = processCombatTick(state.character, state.combat)
-      let character = result.character
-      let combat = result.combat
-      let currencies = { ...state.currencies }
-      let zones = state.zones
-      let inventory = { ...state.inventory }
-      let equipment = state.equipment
+      // Rolling combat event buffer for live UI (last 50 events)
+      nextState.combat.events = [...state.combat.events, ...events].slice(-50)
 
-      if (result.goldEarned > 0) {
-        currencies['gold'] = (currencies['gold'] || 0) + result.goldEarned
-      }
-
-      if (result.xpEarned > 0) {
-        character = addExperience(character, result.xpEarned)
-
-        // Drop item on kill
-        const dropped = dropItem(zone.level)
-        if (dropped) {
-          const isAutoSell =
-            (dropped.rarity === 'normal' && inventory.autoSellNormal && dropped.itemLevel <= character.level) ||
-            (dropped.rarity === 'magic' && inventory.autoSellMagic && dropped.itemLevel <= character.level)
-
-          if (isAutoSell) {
-            currencies['gold'] = (currencies['gold'] || 0) + Math.max(1, dropped.itemLevel * 2)
-          } else if (inventory.items.length < inventory.maxSize) {
-            inventory.items = [...inventory.items, dropped]
-          }
-        }
-
-        // Currency drop chance
-        if (Math.random() < 0.1) {
-          const currencyPool = ['awakening', 'mutation', 'cleansing']
-          const currencyId = currencyPool[Math.floor(Math.random() * currencyPool.length)]
-          currencies[currencyId] = (currencies[currencyId] || 0) + 1
-        }
-      }
-
-      // Update zone progress on monster kill
-      if (result.xpEarned > 0 && zone.killProgress < 100) {
-        zones = zones.map(w => {
-          if (w.id !== zone.id) return w
-          const newProgress = Math.min(100, w.killProgress + 100 / w.killsRequired)
-          return { ...w, killProgress: newProgress }
-        })
-
-        const currentIndex = zones.findIndex(w => w.id === zone.id)
-        if (zones[currentIndex].killProgress >= 100 && currentIndex < zones.length - 1) {
-          zones = zones.map((w, idx) => (idx === currentIndex + 1 ? { ...w, unlocked: true } : w))
-        }
-      }
-
-      // Recalculate character from equipment
-      character = recalculateCharacterFromEquipment(character, equipment)
-      character = { ...character, life: Math.min(character.life, character.maxLife), energyShield: Math.min(character.energyShield, character.maxEnergyShield) }
-
+      // Periodic auto-save
       const shouldSave = Math.random() < 1 / SAVE_INTERVAL_TICKS
       if (shouldSave) {
-        saveGame({ ...state, character, combat, currencies, zones, inventory })
+        saveGame(nextState)
       }
 
-      return { ...state, character, combat, currencies, zones, inventory }
+      return nextState
     })
   },
 
@@ -237,7 +277,7 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
       if (existing) {
         inventoryItems.push(existing)
       }
-      const character = recalculateCharacterFromEquipment(state.character, equipment)
+      const character = recalcCharacter({ ...state, equipment } as GameState, state.character)
       return { ...state, equipment, inventory: { ...state.inventory, items: inventoryItems }, character }
     })
   },
@@ -249,7 +289,7 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
       if (state.inventory.items.length >= state.inventory.maxSize) return state
       const equipment = { ...state.equipment, [slot]: null }
       const inventoryItems = [...state.inventory.items, item]
-      const character = recalculateCharacterFromEquipment(state.character, equipment)
+      const character = recalcCharacter({ ...state, equipment } as GameState, state.character)
       return { ...state, equipment, inventory: { ...state.inventory, items: inventoryItems }, character }
     })
   },
@@ -303,6 +343,159 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
   },
 
   resetGame: () => {
-    set(createInitialState())
+    set({ ...createInitialState('warlord'), gamePhase: 'class-select' })
+  },
+
+  startGame: (classId: ClassId) => {
+    set({ ...createInitialState(classId), gamePhase: 'playing' })
+  },
+
+  allocateNode: (nodeId: string) => {
+    set(state => {
+      const newCharacter = allocateNode(state.character, state.passiveTree, nodeId)
+      if (newCharacter === state.character) return state
+      const character = recalcCharacter(state, newCharacter)
+      return { ...state, character }
+    })
+  },
+
+  refundNode: (nodeId: string) => {
+    set(state => {
+      const newCharacter = refundNode(state.character, state.passiveTree, nodeId)
+      if (newCharacter === state.character) return state
+      const character = recalcCharacter(state, newCharacter)
+      return { ...state, character }
+    })
+  },
+
+  selectAscendancy: (ascendancyId: string) => {
+    set(state => ({
+      ...state,
+      character: { ...state.character, ascendancyId },
+      gamePhase: 'playing',
+      activeTrial: null,
+    }))
+  },
+
+  allocateAscendancyNode: (nodeId: string) => {
+    set(state => {
+      if (!state.character.ascendancyId) return state
+      const ascendancy = ASCENDANCIES[state.character.ascendancyId]
+      if (!ascendancy) return state
+      if (state.character.allocatedAscendancyNodes.includes(nodeId)) return state
+      if (state.character.allocatedAscendancyNodes.length >= state.character.ascendancyPoints) return state
+      const node = ascendancy.nodes.find(n => n.id === nodeId)
+      if (!node) return state
+      if (node.requires && node.requires.some(req => !state.character.allocatedAscendancyNodes.includes(req))) return state
+      // Mutual exclusivity: if this node is mutually exclusive with an currently-allocated node, block
+      if (node.mutuallyExclusiveWith && node.mutuallyExclusiveWith.some(id => state.character.allocatedAscendancyNodes.includes(id))) return state
+      // For choice keystones, require a choice before allocating (unless already picked)
+      if (node.choices && node.choices.length > 0 && !state.character.keystoneChoices[nodeId]) return state
+      const withNode = { ...state.character, allocatedAscendancyNodes: [...state.character.allocatedAscendancyNodes, nodeId] }
+      const character = recalcCharacter(state, withNode)
+      return { ...state, character }
+    })
+  },
+
+  setAscendancyChoice: (nodeId: string, choiceId: string) => {
+    set(state => ({
+      ...state,
+      character: { ...state.character, keystoneChoices: { ...state.character.keystoneChoices, [nodeId]: choiceId } },
+    }))
+  },
+
+  equipSkill: (skillId: string, slotIndex: number) => {
+    set(state => {
+      const equippedSkills = [...state.character.equippedSkills]
+      if (slotIndex < 0 || slotIndex >= 4) return state
+      equippedSkills[slotIndex] = { skillId, supportIds: [], cooldownRemaining: 0, hitCounter: 0 }
+      const character = recalcCharacter(state, { ...state.character, equippedSkills })
+      return { ...state, character }
+    })
+  },
+
+  unequipSkill: (slotIndex: number) => {
+    set(state => {
+      const equippedSkills = [...state.character.equippedSkills]
+      if (slotIndex < 0 || slotIndex >= 4) return state
+      equippedSkills[slotIndex] = { skillId: '', supportIds: [], cooldownRemaining: 0, hitCounter: 0 }
+      const character = recalcCharacter(state, { ...state.character, equippedSkills })
+      return { ...state, character }
+    })
+  },
+
+  equipSupport: (supportId: string, skillSlotIndex: number) => {
+    set(state => {
+      const equippedSkills = [...state.character.equippedSkills]
+      const skill = equippedSkills[skillSlotIndex]
+      if (!skill) return state
+      if (skill.supportIds.length >= state.character.supportSlotCount) return state
+      if (skill.supportIds.includes(supportId)) return state
+      equippedSkills[skillSlotIndex] = { ...skill, supportIds: [...skill.supportIds, supportId] }
+      const character = recalcCharacter(state, { ...state.character, equippedSkills })
+      return { ...state, character }
+    })
+  },
+
+  unequipSupport: (skillSlotIndex: number, supportSlotIndex: number) => {
+    set(state => {
+      const equippedSkills = [...state.character.equippedSkills]
+      const skill = equippedSkills[skillSlotIndex]
+      if (!skill) return state
+      const supportIds = [...skill.supportIds]
+      supportIds.splice(supportSlotIndex, 1)
+      equippedSkills[skillSlotIndex] = { ...skill, supportIds }
+      const character = recalcCharacter(state, { ...state.character, equippedSkills })
+      return { ...state, character }
+    })
+  },
+
+  startTrial: (trialId: string) => {
+    set(state => {
+      const trial = TRIALS.find(t => t.id === trialId)
+      if (!trial) return state
+      const monsterTemplate = MONSTERS[trial.monsterId]
+      const monster: Monster = { ...monsterTemplate, life: monsterTemplate.maxLife }
+      const combat: CombatState = {
+        monster,
+        monsterLife: monster.maxLife,
+        lastDamageDealt: 0,
+        lastDamageTaken: 0,
+        combatLog: [],
+        isRespawning: false,
+        respawnTicks: 0,
+        events: [],
+        ticksSinceDamageTaken: 0,
+        playerEvasionStacks: 0,
+        monsterEvasionStacks: 0,
+        momentum: { stacks: 0, decayTicks: 0, baseCap: 10, capBonus: 0 },
+        herald: { active: [], tideRamp: 0, hitTargets: [] },
+        marshal: { army: null, bulwarkFlat: 0, bulwarkTicksRemaining: 0 },
+        delayedDamageQueue: [],
+        ailments: {},
+        virulent: { stacks: {}, septicemiaMultiplier: {}, calcifyAccumulator: {}, slow: {}, patientZeroTarget: null },
+      }
+      return { ...state, activeTrial: trial, combat, gamePhase: 'ascendancy-select' }
+    })
+  },
+
+  devSetLevel: (level: number) => {
+    set(state => {
+      const clampedLevel = Math.max(1, Math.min(level, 90))
+      const character = recalcCharacter(state, {
+        ...state.character,
+        level: clampedLevel,
+        experience: 0,
+        experienceToNext: experienceForLevel(clampedLevel),
+      })
+      return { ...state, character: { ...character, life: character.maxLife, energyShield: character.maxEnergyShield } }
+    })
+  },
+
+  devSetStats: (stats: Partial<Character>) => {
+    set(state => {
+      const next = { ...state.character, devOverrides: { ...state.character.devOverrides, ...stats } }
+      return { ...state, character: recalcCharacter(state, next) }
+    })
   },
 }))
