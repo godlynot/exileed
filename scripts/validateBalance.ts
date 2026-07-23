@@ -12,7 +12,12 @@
 import { MONSTERS } from '../src/data/monsters.ts'
 import { ZONES } from '../src/data/zones.ts'
 import { DAMAGE, monsterScalingMultiplier } from '../src/data/balance.ts'
-import type { Monster } from '../src/types/game.ts'
+import { createItem, recalculateCharacterFromEquipment } from '../src/systems/items.ts'
+import { applyPassiveStats, applyAscendancyStats, allocateNode, getAdjacency, getNode } from '../src/systems/passives.ts'
+import { PASSIVE_TREE } from '../src/data/passiveTree.ts'
+import { CLASSES, CLASS_ROOT_MAP } from '../src/data/classes.ts'
+import type { Character, ClassId, Monster } from '../src/types/game.ts'
+import type { Equipment, Item } from '../src/types/item.ts'
 
 // ---------------------------------------------------------------------------
 // Player power model — REPLACE these with real calls into your own systems
@@ -22,23 +27,151 @@ import type { Monster } from '../src/types/game.ts'
 
 interface PowerEstimate { dps: number; ehp: number; armour: number }
 
-function estimatePlayerPower(level: number): PowerEstimate {
-  // Assumes: ~1 passive point/level, gear affix tiers tracking zone level,
-  // support slots at 2/3/4/5 by campaign milestone.
-  const flatDmg = 4 + level * 1.6
-  const treeInc = 1 + 0.10 * 6 * (level / 8)
-  const gearInc = 1 + 4 * (0.15 * Math.pow(1.35, level / 8))
-  const slots = 2 + (level >= 24 ? 1 : 0) + (level >= 40 ? 1 : 0) + (level >= 56 ? 1 : 0)
-  const supportMore = Math.pow(1.25, slots - 2)
-  const aps = 1.2 + 0.0025 * level
-  const crit = 1.075 + 0.00125 * level
-  const dps = flatDmg * treeInc * gearInc * supportMore * aps * crit
+const SLOT_BASES: Record<keyof Equipment, string> = {
+  weapon: 'rusted_axe',
+  offhand: 'worn_shield',
+  helmet: 'tattered_hood',
+  body: 'battered_chest',
+  gloves: 'fingerless_gloves',
+  boots: 'worn_boots',
+  belt: 'rope_belt',
+  amulet: 'seashell_amulet',
+  ring1: 'iron_ring',
+  ring2: 'iron_ring',
+}
 
-  const baseLife = 50 + level * 6
-  const gearLife = 40 * Math.pow(1.9, level / 8)
-  const lifeInc = 1 + 0.08 * 5 * (level / 8)
-  const armour = 20 * Math.pow(2.3, level / 8)
-  return { dps, ehp: (baseLife + gearLife) * lifeInc, armour }
+function gearRarityForLevel(level: number): 'normal' | "magic" | "rare" {
+  if (level <= 3) return 'normal'
+  if (level <= 9) return 'magic'
+  return 'rare'
+}
+
+function buildEquipment(level: number): Equipment {
+  const rarity = gearRarityForLevel(level)
+  const equipment: Equipment = {
+    weapon: null,
+    offhand: null,
+    helmet: null,
+    body: null,
+    gloves: null,
+    boots: null,
+    belt: null,
+    amulet: null,
+    ring1: null,
+    ring2: null,
+  }
+  for (const slot of Object.keys(equipment) as (keyof Equipment)[]) {
+    const baseId = SLOT_BASES[slot]
+    if (!baseId) continue
+    equipment[slot] = createItem(baseId, level, rarity)
+  }
+  return equipment
+}
+
+function allocatePassivesBFS(character: Character, points: number): Character {
+  const adj = getAdjacency(PASSIVE_TREE)
+  const allocated = new Set(character.allocatedNodes)
+  const queue = [...character.allocatedNodes]
+  let c = { ...character }
+  c.passivePoints = points
+
+  while (points > 0 && queue.length > 0) {
+    const current = queue.shift()!
+    const neighbors = adj.get(current) ?? []
+    for (const neighbor of neighbors) {
+      if (!allocated.has(neighbor)) {
+        const node = getNode(PASSIVE_TREE, neighbor)
+        if (!node || node.type === 'root') continue
+        const before = c.allocatedNodes.length
+        c = allocateNode(c, PASSIVE_TREE, neighbor)
+        if (c.allocatedNodes.length > before) {
+          allocated.add(neighbor)
+          queue.push(neighbor)
+          points--
+          if (points <= 0) break
+        }
+      }
+    }
+  }
+  return c
+}
+
+function createDefaultCharacter(classId: ClassId): Character {
+  const gameClass = CLASSES[classId]
+  return {
+    id: 'player_1',
+    name: 'Exile',
+    classId,
+    level: 1,
+    experience: 0,
+    experienceToNext: 100,
+    life: gameClass.baseLife,
+    maxLife: gameClass.baseLife,
+    energyShield: gameClass.baseEnergyShield,
+    maxEnergyShield: gameClass.baseEnergyShield,
+    attributes: { ...gameClass.baseAttributes },
+    resistances: { fire: 0, cold: 0, lightning: 0, chaos: 0 },
+    accuracy: gameClass.baseAccuracy,
+    evasion: gameClass.baseEvasion,
+    armour: gameClass.baseAttributes.strength * 2,
+    attackRate: 1.0,
+    basePhysicalDamageMin: 2,
+    basePhysicalDamageMax: 4,
+    criticalChance: 0.05,
+    criticalMultiplier: 1.5,
+    special: {},
+    isAlive: true,
+    respawnTimer: 0,
+    allocatedNodes: [`root_${CLASS_ROOT_MAP[classId]}`],
+    passivePoints: 0,
+    ascendancyId: null,
+    allocatedAscendancyNodes: [],
+    keystoneChoices: {},
+    ascendancyPoints: 0,
+    trial1Completed: false,
+    trial2Completed: false,
+    trial3Completed: false,
+    trial4Completed: false,
+    devOverrides: {},
+    equippedSkills: [],
+    ownedGems: [],
+    supportSlotCount: 2,
+    increasedPhysicalDamage: 0,
+    morePhysicalDamage: 1,
+    increasedSpellDamage: 0,
+    moreSpellDamage: 1,
+    increasedAttackSpeed: 0,
+    moreAttackSpeed: 1,
+    increasedAccuracy: 0,
+    lifeRegen: 0,
+    esRecharge: 0,
+  }
+}
+
+function estimatePlayerPower(level: number): PowerEstimate {
+  const originalRandom = Math.random
+  Math.random = () => 0.5
+  try {
+    let character = createDefaultCharacter('warlord')
+    character.level = level
+    character.passivePoints = level - 1
+    character.allocatedNodes = ['root_warlord']
+
+    const equipment = buildEquipment(level)
+
+    character = allocatePassivesBFS(character, level - 1)
+    character = recalculateCharacterFromEquipment(character, equipment)
+    character = applyPassiveStats(character, PASSIVE_TREE)
+    character = applyAscendancyStats(character)
+
+    const avgHit = ((character.basePhysicalDamageMin + character.basePhysicalDamageMax) / 2) * (1 + (character.increasedPhysicalDamage ?? 0))
+    const critMult = 1 + character.criticalChance * (character.criticalMultiplier - 1)
+    const dps = avgHit * character.attackRate * critMult
+
+    return { dps, ehp: character.maxLife, armour: character.armour }
+  } finally {
+    Math.random = originalRandom
+  }
 }
 
 // ---------------------------------------------------------------------------
