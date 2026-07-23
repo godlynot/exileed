@@ -1,26 +1,38 @@
-import type { Character } from '../types/game.ts'
+import type { Character, CombatState } from '../types/game.ts'
 import { DAMAGE } from '../data/balance.ts'
+import {
+  momentumDamageMultiplier,
+  momentumActionSpeed,
+  momentumDamageReduction,
+  momentumCap,
+} from '../systems/momentum.ts'
+import { getActiveHeralds, getActiveBuffs } from '../systems/characterEffects.ts'
 
 function estimatedArmourMitigation(character: Character): number {
-  // Estimate mitigation against a representative hit for the character's level
   const sampleHitDamage = Math.max(10, character.level * 10)
   return character.armour / (character.armour + DAMAGE.ARMOUR_MITIGATION_DENOMINATOR * sampleHitDamage)
 }
 
 function estimatedEvadeChance(character: Character): number {
-  // Estimate evasion against a representative attacker for the character's level
   const attackerAccuracy = Math.max(50, character.level * 20 + 50)
   return Math.min(character.evasion / (character.evasion + attackerAccuracy), DAMAGE.EVASION_CAP)
 }
 
-function calculateDps(character: Character): number {
+function calculateDps(character: Character, combat: CombatState): number {
   const avgPhys = (character.basePhysicalDamageMin + character.basePhysicalDamageMax) / 2
   const critBonus = 1 + character.criticalChance * (character.criticalMultiplier - 1)
-  return avgPhys * character.attackRate * critBonus
+  const actionSpeed = momentumActionSpeed(combat.momentum, character)
+  const damageMult = momentumDamageMultiplier(combat.momentum, character)
+  return avgPhys * character.attackRate * actionSpeed * damageMult * critBonus
 }
 
-export function CharacterStats({ character }: { character: Character }) {
-  const dps = calculateDps(character)
+export function CharacterStats({ character, combat }: { character: Character; combat: CombatState }) {
+  const dps = calculateDps(character, combat)
+  const heralds = getActiveHeralds(character)
+  const buffs = getActiveBuffs(character)
+  const momentum = combat.momentum
+  const momentumCapValue = momentumCap(momentum, character)
+  const isMax = momentum.stacks >= momentumCapValue
 
   const resistances = [
     { key: 'fire' as const, label: 'Fire', value: character.resistances.fire * 100 },
@@ -41,7 +53,9 @@ export function CharacterStats({ character }: { character: Character }) {
       <div className="grid grid-cols-2 gap-2">
         <div>
           <div className="text-[10px] text-gray-500 uppercase">Attack Rate</div>
-          <div className="text-sm text-gray-200">{character.attackRate.toFixed(2)}/s</div>
+          <div className="text-sm text-gray-200">
+            {(character.attackRate * momentumActionSpeed(momentum, character)).toFixed(2)}/s
+          </div>
         </div>
         <div>
           <div className="text-[10px] text-gray-500 uppercase">Crit Chance</div>
@@ -95,7 +109,7 @@ export function CharacterStats({ character }: { character: Character }) {
 
       <div className="border-t border-[#2e303a] pt-3 space-y-1">
         <div className="text-[10px] text-gray-500 uppercase tracking-wider">Resistances</div>
-        {resistances.map(res => {
+        {resistances.map((res) => {
           const isUncapped = res.value < DAMAGE.RESISTANCE_CAP * 100
           return (
             <div key={res.key} className="flex justify-between text-sm">
@@ -107,6 +121,72 @@ export function CharacterStats({ character }: { character: Character }) {
           )
         })}
       </div>
+
+      {(character.special.momentum || combat.momentum.stacks > 0) && (
+        <div className="border-t border-[#2e303a] pt-3 space-y-2">
+          <div className="text-[10px] text-gray-500 uppercase tracking-wider">Momentum</div>
+          <div className="flex justify-between text-sm">
+            <span className="text-gray-400">Stacks</span>
+            <span className={isMax ? 'text-[#d4a017] font-medium' : 'text-gray-200'}>
+              {momentum.stacks} / {momentumCapValue}
+            </span>
+          </div>
+          {momentum.stacks > 0 && (
+            <>
+              <div className="flex justify-between text-sm">
+                <span className="text-gray-400">More Damage</span>
+                <span className="text-gray-200">
+                  {Math.round((momentumDamageMultiplier(momentum, character) - 1) * 100)}%
+                </span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-gray-400">Action Speed</span>
+                <span className="text-gray-200">
+                  {Math.round((momentumActionSpeed(momentum, character) - 1) * 100)}%
+                </span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-gray-400">Damage Reduction</span>
+                <span className="text-gray-200">
+                  {Math.round(momentumDamageReduction(momentum) * 100)}%
+                </span>
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
+      {(heralds.length > 0 || buffs.length > 0) && (
+        <div className="border-t border-[#2e303a] pt-3 space-y-2">
+          <div className="text-[10px] text-gray-500 uppercase tracking-wider">Active Effects</div>
+          {heralds.length > 0 && (
+            <div className="flex flex-wrap gap-1">
+              {heralds.map((herald) => (
+                <span
+                  key={herald.label}
+                  title={herald.desc}
+                  className="px-2 py-0.5 bg-blue-900/40 border border-blue-700/50 rounded text-xs text-blue-200 cursor-help"
+                >
+                  {herald.label}
+                </span>
+              ))}
+            </div>
+          )}
+          {buffs.length > 0 && (
+            <div className="flex flex-wrap gap-1">
+              {buffs.map((buff) => (
+                <span
+                  key={buff.label}
+                  title={buff.desc}
+                  className="px-2 py-0.5 bg-[#2e2a1f] border border-[#d4a017]/50 rounded text-xs text-[#d4a017] cursor-help"
+                >
+                  {buff.label}
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   )
 }

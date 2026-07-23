@@ -1,45 +1,88 @@
 # Rift Idler — Balance & Tuning Document
 
-This file documents the high-level balance intent. The authoritative source for all tuning constants is `src/data/balance.ts`.
+The authoritative source for all tuning constants is `src/data/balance.ts`. This document describes the high-level balance intent and the core formulas used by the game.
 
 ## Core Loop
 
-- **Tick rate:** 100 ms (10 ticks per second).
-- **Autosave:** Every 30 seconds and on tab close.
-- **Offline progress:** Capped at 8 hours, computed in 1-hour chunks behind a loading overlay.
+- **Tick rate:** 200 ms (5 ticks per second).
+- **Autosave:** Every 30 seconds (random chance per tick).
+- **Offline progress:** Constants exist (`OFFLINE_PROGRESS_MAX_HOURS`, `OFFLINE_PROGRESS_CHUNK_HOURS`) but the loading-overlay simulation is not yet wired to `loadGame()`.
 
-## Character
+## Character Progression
 
-- Max level: 90.
-- 1 passive point per level + bonus campaign points.
-- Base character stats come from `src/data/classes.ts`.
-- Derived life: `BASE_LIFE + STRENGTH * 0.5`.
-- Derived ES: `BASE_ES + INTELLIGENCE * 0.5`.
+- **Max level:** 90.
+- **Passive points:** +1 per level up.
+- **Level-up bonus:** +6 max Life, +6 max Energy Shield, and +1% increased damage per level.
+- Base attributes, life, energy shield, accuracy, and evasion come from `src/data/classes.ts`.
 
-## Combat
+### Attribute-Derived Bonuses
 
-### Damage
+| Attribute | Bonus per point | Bonus per 10 points |
+|---|---|---|
+| Strength | +2 Life | +0.5% increased melee physical damage |
+| Dexterity | +2 Accuracy | +0.5% increased evasion |
+| Intelligence | +2 Energy Shield | +0.5% increased spell damage |
+
+### Pools
 
 ```
-DPS = avg_weapon_damage * (1 + increased%) * more_multipliers * attack_rate * crit_adjustment
-
-crit_adjustment = 1 + crit_chance * (crit_multiplier - 1)
+maxLife = (baseLife + levelBonus + strength * 2 + flatLife) * (1 + increasedMaxLife%)
+maxEnergyShield = (baseES + levelBonus + intelligence * 2 + flatES) * (1 + increasedES%)
+levelBonus = (level - 1) * 6  // for both Life and ES
 ```
 
-- Critical chance cap: 75%.
-- Default crit multiplier: 1.5x.
+## Damage
 
-### Mitigation
+### Ordering
 
-- **Armour mitigation:** `armour / (armour + 5 * damage)`.
-- **Evasion chance:** clamped between 5% and 95%.
-- **Resistances:** capped at 75%.
+1. Sum all flat added damage.
+2. Apply the single increased multiplier: `1 + Σ increased%`.
+3. Apply each more multiplier separately: `× (1 + more₁) × (1 + more₂) …`.
 
-### Death
+```
+finalDamage = flatDamage * (1 + Σ increased%) * Π (1 + more) * critMultiplier
+```
+
+### Critical Strikes
+
+- **Base crit chance:** 5%.
+- **Crit chance cap:** 100%.
+- **Default crit multiplier:** 1.5x.
+
+## Mitigation
+
+### Armour
+
+```
+mitigation = armour / (armour + 5 * incomingHitDamage)
+```
+
+Armour is relatively better against small, frequent hits and worse against large, rare hits.
+
+### Evasion
+
+```
+evasionChance = evasion / (evasion + attackerAccuracy)  // capped at 95%
+hitchance = 1 - evasionChance
+```
+
+### Resistances
+
+- Flat, additive, hard-capped at 75%.
+- Zealot’s Creed raises the elemental cap to 85%.
+- Negative resistances are possible down to -75%.
+
+## Recovery
+
+- **Life regen:** 2% of max life per second (flat per tick).
+- **ES recharge:** 25% of max ES per second after 3 seconds without taking damage.
+- Energy Shield absorbs damage before Life.
+
+## Death
 
 - Character retreats at 0 life.
 - Respawn time: 5 seconds.
-- XP penalty: 10% toward the next level (never de-levels).
+- XP penalty: 10% of the current level’s XP-to-next (never de-levels).
 
 ## Monster Scaling
 
@@ -54,8 +97,49 @@ Per-level multipliers (compounding):
 
 - XP to next level: `100 * level ^ 1.6`.
 
+## Momentum
+
+Momentum is the Warlord class mechanic (both Vanguard and Marshal ascendancies).
+
+- **Max stacks:** 50
+- **Decay:** one stack fades after 3 seconds without a kill
+- **Damage bonus:** +1.6% MORE per stack → +80% MORE at 50 stacks (1.8× multiplier)
+- **Action speed:** +0.8% per stack → +40% at 50 stacks
+- **Life regen (Rallying Presence):** +0.4% of max life per second per stack → +20% at 50 stacks
+- **Damage reduction (Rallying Presence):** +0.4% per stack → +20% at 50 stacks
+
+The damage bonus is a **MORE** multiplier, so it multiplies all other damage sources rather than adding to increased-damage bonuses.
+
+## Gem XP & Leveling
+
+- **Max gem level:** 20
+- **XP to next level:** `100 * level`
+- **XP per skill hit:** 10 (plus 1 XP per 50 damage dealt)
+- **XP per support hit:** 5 (plus 1 XP per 100 damage dealt)
+- **Skill damage scaling:** +3% more damage per gem level → 1.57× at level 20
+- **Support modifier scaling:** +2% per gem level → supports grant ~1.38× their base values at level 20
+
+Gems gain XP on every hit. XP is granted to the skill gem and all linked support gems when the skill lands a hit. Level-up events are emitted to the combat log.
+
+## Ascendancy Tuning
+
+### Herald of Gold
+
+Kills while Herald of Gold is active grant bonus item drops:
+
+- **Extra item chance:** +25% for one extra item roll (+50% with Unwavering Declaration)
+- **Rarity upgrade bonus:** +5% Rare / +10% Magic find (+10% Rare / +20% Magic with Unwavering Declaration)
+
+These bonuses stack with the existing zone-level drop tables in `src/systems/items.ts`.
+
+### Twin Heralds
+
+- Two auras can be active at once.
+- Each aura applies at its normal (non-Unwavering) strength.
+- Special effects are disabled for both auras.
+
 ## Zones
 
-- Campaign: 8 acts in v1.
-- Zone kill progress fills until 100%; next zone unlocks.
-- Boss zones have a single boss kill requirement.
+- The campaign is planned for 8 acts.
+- Zone kill progress fills until 100%; the next zone unlocks.
+- Boss zones currently require a single kill.

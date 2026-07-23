@@ -33,9 +33,9 @@ src/
 
 | Directory | What lives there |
 |---|---|
-| `src/components/` | `App`, `ClassSelection`, `CombatScene`, `CombatLog`, `InventoryPanel`, `EquipmentPanel`, `CraftingPanel`, `PassiveTreePanel`, `AscendancyTree`, `AscendancyWheel`, `SkillsPanel`, `CharacterStats`, `DevTools`, `ErrorBoundary` |
+| `src/components/` | `App`, `ClassSelection`, `CombatScene`, `CombatLog`, `CombatEffects`, `InventoryPanel`, `EquipmentPanel`, `CraftingPanel`, `PassiveTreePanel`, `AscendancyTree`, `AscendancyWheel`, `SkillsPanel`, `CharacterStats`, `DevTools`, `ErrorBoundary` |
 | `src/data/` | `balance.ts`, `classes.ts`, `zones.ts`, `monsters.ts`, `items.ts`, `affixes.ts`, `currencies.ts`, `skills.ts`, `supports.ts`, `passiveTree.ts`, `ascendancies.ts` |
-| `src/systems/` | `combat.ts`, `items.ts`, `passives.ts`, `ailments.ts`, `momentum.ts`, `xp.ts`, `save.ts` |
+| `src/systems/` | `combat.ts`, `items.ts`, `passives.ts`, `ailments.ts`, `momentum.ts`, `xp.ts`, `save.ts`, `gems.ts`, `characterEffects.ts` |
 | `src/store/` | `gameStore.ts` |
 | `scripts/` | `validateTree.ts`, `validateAscendancies.ts` |
 
@@ -47,6 +47,7 @@ src/
 - **Build:** `bun run build`
 - **Dev server:** `bun run dev` (binds to `0.0.0.0`)
 - **Validators:** `bun run validate:tree` and `bun run validate:ascendancies`
+- **Gem XP/leveling:** Implemented in `src/systems/gems.ts`, scaled in combat, displayed in `SkillsPanel.tsx`
 - **Imports:** Always use `.ts` extensions (e.g. `import { ... } from './file.ts'`)
 - **State mutations:** Zustand store actions return new state objects; combat is a pure function
 - **Styling:** Tailwind v4 with `@import "tailwindcss"` in `src/index.css`
@@ -112,9 +113,10 @@ Key formulas:
 - Skills are in `src/data/skills.ts`, supports in `src/data/supports.ts`
 - Each skill has tags (attack, spell, physical, fire, cold, lightning, chaos, dot, aoe, projectile, melee)
 - Supports only apply if their allowed tags overlap with the skill's tags
-- Supports add flat/increased/more stat mods
+- Supports add flat/increased/more stat mods, scaled by support gem level
 - Player has 4 skill slots; each skill slot has a skill + support slots
 - `supportSlotCount` grows with campaign: 2 → 3 → 4 → 5 at acts 3, 6, 9
+- **Gem XP/leveling:** Skill and support gems gain XP when the skill fires and hits. They level independently up to level 20. Higher level = higher base skill damage (+3% per level) and stronger support modifiers (+2% per level). XP requirements scale with `GEMS.XP_PER_LEVEL * level`. Levels and XP are shown in `SkillsPanel.tsx` and `gemLeveledUp` events appear in the combat log.
 
 ### 4.5 Passive Tree
 
@@ -133,11 +135,21 @@ Keystones (hard-coded special hooks):
 - `special:zealots_creed` — 85% res cap, pools halved
 - `special:vengeful_resolve` — 35% more damage, 25% more damage taken
 
-### 4.6 Ascendancies
+### 4.6 Classes & Ascendancies
 
-- 6 classes, 2 ascendancies each (12 total)
-- Current names: Fateseer / Herald (Oracle); Contagion / Virulent (Plaguebringer); Vanguard / Marshal (Warlord)
-- Each ascendancy has 12 nodes: 7 smalls, 5 keystones
+- **6 launch classes**: Brute, Stalker, Acolyte, Oracle, Warlord, Plaguebringer.
+- Each class has **2 ascendancies** (12 total wheels in data, 6 final + 6 placeholders).
+
+| Class | Primary Attributes | Ascendancy A | Ascendancy B | Design Status |
+|---|---|---|---|---|
+| **Brute** | Strength | Juggernaut | Berserker | **Placeholder — pending redesign** |
+| **Stalker** | Dexterity | Deadeye | Assassin | **Placeholder — pending redesign** |
+| **Acolyte** | Intelligence | Elementalist | Occultist | **Placeholder — pending redesign** |
+| **Oracle** | Int/Dex | **Fateseer** | **Herald** | **Final — per handoff doc** |
+| **Warlord** | Str/Dex | **Vanguard** | **Marshal** | **Final — per handoff doc** |
+| **Plaguebringer** | Dex/Int | **Virulent** | **Contagion** | **Final — per handoff doc** |
+
+- Each final ascendancy has **12 paid nodes (7 smalls, 5 keystones)** plus optional free auto-selected nodes (e.g., Vanguard/Marshal Momentum).
 - Trials at levels 30/50/65/75 award 2 ascendancy points each (8 total)
 - Some keystones require choosing from a list (e.g. Herald auras, Marshal armies)
 - `keystoneChoices` on `Character` stores `nodeId → choiceId(s)` (comma-separated for multi-choice like Twin Heralds)
@@ -156,7 +168,7 @@ Ascendancy mechanics wired in `combat.ts` / `passives.ts`:
 - **Marshal Iron Legion:** flat damage resistance equal to character level
 - **Marshal Skirmishers:** kills grant +2 Momentum instead of +1
 - **Marshal War of Attrition:** applies poison DOT every second
-- **Vanguard / Marshal Momentum:** damage, action speed, life regen, DR per stack
+- **Vanguard / Marshal Momentum:** free auto-selected small node grants the Momentum resource (damage, action speed, life regen, DR per stack). Non-Warlord characters do not have Momentum.
 
 ### 4.7 Items & Crafting
 
@@ -208,7 +220,7 @@ Ascendancy mechanics wired in `combat.ts` / `passives.ts`:
 
 - Complete campaign zones 4–8
 - Wire `loadGame()` and offline progress overlay
-- Gem XP/leveling (skills/supports currently stay level 1)
+- Herald/Marshal party-set effects (v1 self-buff limitation documented in `combat.ts`)
 - Nexus endgame / Rift Crystals
 - 6 unique items
 - Full map affix rolling
@@ -250,9 +262,11 @@ bun run validate:ascendancies
   3. Implement the effect in `src/systems/combat.ts` or `src/systems/passives.ts`
   4. Add the stat to `VALID_SPECIALS` in `scripts/validateAscendancies.ts`
   5. Run `bun run validate:ascendancies`
-- **Adding a new skill?** Update `src/data/skills.ts` and optionally `src/data/supports.ts`. Combat auto-picks skills from `character.equippedSkills`.
+- **Adding a new skill or support?** Update `src/data/skills.ts` or `src/data/supports.ts`. Combat auto-picks skills from `character.equippedSkills` and scales damage/mods by gem level.
+- **Changing gem balance?** Update `src/data/balance.ts` (`GEMS` constants) and `src/systems/gems.ts`. Test by equipping a skill, killing monsters, and checking `SkillsPanel.tsx` for level/XP changes.
 - **Save compatibility:** Bump `SAVE_VERSION` and add migration logic in `src/systems/save.ts` whenever you change `GameState` shape.
 
 ---
 
 *Generated: 2026-07-22*
+*Last updated: 2026-07-23 (M4.5 gem XP/leveling wired, CombatEffects hover tooltips, delayed damage log entries)*

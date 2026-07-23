@@ -60,6 +60,9 @@ export interface PassiveSpecialEffects {
   zealotsCreed?: boolean
   vengefulResolve?: boolean
 
+  // Momentum access (Warlord ascendancy only)
+  momentum?: boolean
+
   // M4.5 ascendancy / skill hooks
   measuredStrikes?: boolean
   crescendo?: boolean
@@ -270,6 +273,8 @@ export type CombatEvent =
   | { id: string; timestamp: number; type: 'dotTick'; targetId: string; source: AilmentInstance['source']; damage: number; ailmentType: AilmentInstance['type'] }
   | { id: string; timestamp: number; type: 'momentumChanged'; stacks: number }
   | { id: string; timestamp: number; type: 'auraApplied'; auraId: string }
+  | { id: string; timestamp: number; type: 'delayedDamageTick'; targetId: string; damage: number }
+  | { id: string; timestamp: number; type: 'gemLeveledUp'; gemId: string; gemName: string; newLevel: number }
 
 export interface CombatState {
   monster: Monster | null
@@ -293,6 +298,12 @@ export interface CombatState {
   // Active ailments keyed by monster id
   ailments: Record<string, AilmentInstance[]>
   virulent: VirulentState
+  // M4.5 debuff state for the current single-monster encounter
+  monsterDebuffs: {
+    blind?: boolean
+  }
+  // M4.5 Plaguebringer Plaguewind carryover: ailments spread from the last killed monster
+  plaguewindCarryover: AilmentInstance[]
 }
 
 export type NodeType = 'small' | 'notable' | 'keystone' | 'root'
@@ -326,6 +337,8 @@ export type StatKey =
   | 'special:septicemia' | 'special:cardiac_arrest' | 'special:asphyxiation' | 'special:cirrhosis' | 'special:calcify'
   | 'special:relentless_advance' | 'special:overrun' | 'special:breakneck' | 'special:war_machine' | 'special:blitz'
   | 'special:rallying_presence' | 'special:hold_the_line' | 'special:bannermans_resolve' | 'special:bulwarks_wrath' | 'special:war_of_attrition'
+  // Warlord core mechanic
+  | 'special:momentum'
 
 export const STAT_KEYS: StatKey[] = [
   'flat_strength', 'flat_dexterity', 'flat_intelligence',
@@ -347,6 +360,8 @@ export const STAT_KEYS: StatKey[] = [
   'special:septicemia', 'special:cardiac_arrest', 'special:asphyxiation', 'special:cirrhosis', 'special:calcify',
   'special:relentless_advance', 'special:overrun', 'special:breakneck', 'special:war_machine', 'special:blitz',
   'special:rallying_presence', 'special:hold_the_line', 'special:bannermans_resolve', 'special:bulwarks_wrath', 'special:war_of_attrition',
+  // Warlord core mechanic
+  'special:momentum',
 ]
 
 export interface StatMod {
@@ -387,6 +402,8 @@ export interface AscendancyNode {
   stats?: StatMod[]
   // Node ids that cannot coexist with this one
   mutuallyExclusiveWith?: string[]
+  // If true, this node is auto-allocated when the ascendancy is chosen and costs no points
+  free?: boolean
 }
 
 export interface Ascendancy {
@@ -495,6 +512,8 @@ export interface GameState {
   passiveTree: PassiveTree
   gamePhase: GamePhase
   activeTrial: Trial | null
+  // Monotonic tick counter for gameplay timers (advances every simulateTick)
+  tickCounter: number
 }
 
 export interface DroppedItem {

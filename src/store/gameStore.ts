@@ -9,7 +9,8 @@ import { PASSIVE_TREE } from '../data/passiveTree.ts'
 import { TRIALS, ASCENDANCIES } from '../data/ascendancies.ts'
 import { applyPassiveStats, applyAscendancyStats, allocateNode, refundNode } from '../systems/passives.ts'
 import { simulateTick } from '../systems/combat.ts'
-import { saveGame, exportSave as exportSaveString, importSave } from '../systems/save.ts'
+import { createMomentumState } from '../systems/momentum.ts'
+import { saveGame, loadGame, exportSave as exportSaveString, importSave } from '../systems/save.ts'
 import { BASE_ITEMS, STARTER_ITEMS } from '../data/items.ts'
 import { createItem, applyOrb, recalculateCharacterFromEquipment } from '../systems/items.ts'
 
@@ -162,12 +163,14 @@ function createInitialCombat(zone: Zone): CombatState {
     ticksSinceDamageTaken: 0,
     playerEvasionStacks: 0,
     monsterEvasionStacks: 0,
-    momentum: { stacks: 0, decayTicks: 0, baseCap: 10, capBonus: 0 },
+    momentum: createMomentumState(),
     herald: { active: [], tideRamp: 0, hitTargets: [] },
     marshal: { army: null, bulwarkFlat: 0, bulwarkTicksRemaining: 0 },
     delayedDamageQueue: [],
     ailments: {},
     virulent: { stacks: {}, septicemiaMultiplier: {}, calcifyAccumulator: {}, slow: {}, patientZeroTarget: null },
+    monsterDebuffs: {},
+    plaguewindCarryover: [],
   }
 }
 
@@ -204,6 +207,7 @@ export function createInitialState(classId: ClassId = 'warlord'): GameState {
     passiveTree: PASSIVE_TREE,
     gamePhase: 'class-select',
     activeTrial: null,
+    tickCounter: 0,
   }
 }
 
@@ -233,8 +237,21 @@ interface GameActions {
   devSetStats: (stats: Partial<Character>) => void
 }
 
+function getInitialState(): GameState {
+  const loaded = loadGame()
+  if (loaded) {
+    // Preserve the loaded phase; default to class-select if missing
+    return {
+      ...loaded,
+      gamePhase: loaded.gamePhase ?? 'class-select',
+      tickCounter: loaded.tickCounter ?? 0,
+    }
+  }
+  return createInitialState('warlord')
+}
+
 export const useGameStore = create<GameState & GameActions>((set, get) => ({
-  ...createInitialState('warlord'),
+  ...getInitialState(),
 
   tick: () => {
     set(state => {
@@ -249,7 +266,7 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
         saveGame(nextState)
       }
 
-      return nextState
+      return { ...nextState, tickCounter: nextState.tickCounter + 1 }
     })
   },
 
@@ -369,12 +386,21 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
   },
 
   selectAscendancy: (ascendancyId: string) => {
-    set(state => ({
-      ...state,
-      character: { ...state.character, ascendancyId },
-      gamePhase: 'playing',
-      activeTrial: null,
-    }))
+    set(state => {
+      const ascendancy = ASCENDANCIES[ascendancyId]
+      const freeNodes = ascendancy?.nodes.filter(n => n.free) ?? []
+      const nodesToAllocate: Set<string> = new Set()
+      for (const free of freeNodes) {
+        nodesToAllocate.add(free.id)
+        for (const req of free.requires ?? []) {
+          nodesToAllocate.add(req)
+        }
+      }
+      const allocatedAscendancyNodes = [...new Set([...state.character.allocatedAscendancyNodes, ...nodesToAllocate])]
+      const baseChar = { ...state.character, ascendancyId, allocatedAscendancyNodes }
+      const character = recalcCharacter(state, baseChar)
+      return { ...state, character, gamePhase: 'playing', activeTrial: null }
+    })
   },
 
   allocateAscendancyNode: (nodeId: string) => {
@@ -383,9 +409,11 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
       const ascendancy = ASCENDANCIES[state.character.ascendancyId]
       if (!ascendancy) return state
       if (state.character.allocatedAscendancyNodes.includes(nodeId)) return state
-      if (state.character.allocatedAscendancyNodes.length >= state.character.ascendancyPoints) return state
       const node = ascendancy.nodes.find(n => n.id === nodeId)
       if (!node) return state
+      if (node.free) return state
+      const paidAllocated = state.character.allocatedAscendancyNodes.filter(id => !ascendancy.nodes.find(n => n.id === id)?.free).length
+      if (paidAllocated >= state.character.ascendancyPoints) return state
       if (node.requires && node.requires.some(req => !state.character.allocatedAscendancyNodes.includes(req))) return state
       // Mutual exclusivity: if this node is mutually exclusive with an currently-allocated node, block
       if (node.mutuallyExclusiveWith && node.mutuallyExclusiveWith.some(id => state.character.allocatedAscendancyNodes.includes(id))) return state
@@ -398,10 +426,11 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
   },
 
   setAscendancyChoice: (nodeId: string, choiceId: string) => {
-    set(state => ({
-      ...state,
-      character: { ...state.character, keystoneChoices: { ...state.character.keystoneChoices, [nodeId]: choiceId } },
-    }))
+    set(state => {
+      const baseChar = { ...state.character, keystoneChoices: { ...state.character.keystoneChoices, [nodeId]: choiceId } }
+      const character = recalcCharacter(state, baseChar)
+      return { ...state, character }
+    })
   },
 
   equipSkill: (skillId: string, slotIndex: number) => {
@@ -468,14 +497,16 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
         ticksSinceDamageTaken: 0,
         playerEvasionStacks: 0,
         monsterEvasionStacks: 0,
-        momentum: { stacks: 0, decayTicks: 0, baseCap: 10, capBonus: 0 },
+        momentum: createMomentumState(),
         herald: { active: [], tideRamp: 0, hitTargets: [] },
         marshal: { army: null, bulwarkFlat: 0, bulwarkTicksRemaining: 0 },
         delayedDamageQueue: [],
         ailments: {},
         virulent: { stacks: {}, septicemiaMultiplier: {}, calcifyAccumulator: {}, slow: {}, patientZeroTarget: null },
+        monsterDebuffs: {},
+        plaguewindCarryover: [],
       }
-      return { ...state, activeTrial: trial, combat, gamePhase: 'ascendancy-select' }
+      return { ...state, activeTrial: trial, combat }
     })
   },
 

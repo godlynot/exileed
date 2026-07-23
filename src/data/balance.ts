@@ -70,3 +70,26 @@ export function monsterExperience(level: number, base: number): number {
 export function monsterGold(level: number, base: number): number {
   return Math.floor(base * Math.pow(MONSTER.GOLD_MULTIPLIER_PER_LEVEL, level - 1))
 }
+
+// Gem leveling: skills and supports level independently up to GEM_LEVEL_MAX.
+export const GEMS = {
+  MAX_LEVEL: 20,
+  // XP required to reach the next level (flat curve).
+  XP_PER_LEVEL: 100,
+  XP_PER_SKILL_HIT: 10,
+  XP_PER_SUPPORT_HIT: 5,
+  // Per-level scaling of base values.
+  SKILL_DAMAGE_PER_LEVEL: 0.03, // +3% per level
+  SUPPORT_MOD_PER_LEVEL: 0.02,  // +2% per level
+} as const
+
+export function gemXpForNextLevel(currentLevel: number): number {
+  return GEMS.XP_PER_LEVEL * currentLevel
+}
+
+export function gemLevelProgress(xp: number, level: number): { nextLevelXp: number; currentLevelXp: number; progress: number } {
+  const currentLevelXp = level > 1 ? GEMS.XP_PER_LEVEL * (level - 1) : 0
+  const nextLevelXp = GEMS.XP_PER_LEVEL * level
+  const progress = Math.min(1, Math.max(0, (xp - currentLevelXp) / nextLevelXp))
+  return { nextLevelXp, currentLevelXp, progress }
+}

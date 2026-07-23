@@ -8,9 +8,9 @@ This file captures the full game spec, confirmed decisions, proposed original na
 
 - **Working title:** *Rift Idler*
 - **Genre:** Idle / incremental ARPG inspired by Path of Exile systems
-- **Target:** Single-page React 18 + Vite + TypeScript app, client-side only, static deploy
+- **Target:** Single-page React 19 + Vite + TypeScript app, client-side only, static deploy
 - **Repo:** `godlynot/exileed`
-- **Current state:** M2 complete. Items, affixes, equipment, and crafting orbs are implemented. Typecheck and build pass.
+- **Current state:** M4.5 skill/ascendancy systems are in place. Class selection, passive tree, ascendancies, items, crafting, skills, supports, and an event-driven combat loop are functional. Typecheck and tree/ascendancy validation pass.
 
 ---
 
@@ -18,13 +18,14 @@ This file captures the full game spec, confirmed decisions, proposed original na
 
 | Topic | Decision |
 |---|---|
-| Game title | **Rift Idler** (and names in this document) |
-| Elemental resistances | **Keep Fire / Cold / Lightning separate** (load-bearing gearing loop) |
-| Passive tree rendering | **Canvas-based** (Konva or equivalent) |
-| Offline progress | **Loading overlay**, calculated in 1-hour chunks |
+| Game title | **Rift Idler** |
+| Elemental resistances | **Keep Fire / Cold / Lightning / Chaos separate** (load-bearing gearing loop) |
+| Passive tree rendering | **SVG-based**. Konva/react-konva are pending removal. |
+| Offline progress | **Constants defined** but loading-overlay simulation not wired yet |
 | Integrations | **None** — strictly client-side as specified |
-| ES recharge simplification | **Accepted**: passive flat regen per tick |
+| ES recharge | **Delay-based**: 3 seconds without damage, then 25% ES per second |
 | Ascendancies | **Keep 2 per class** (core build-variety system) |
+| Passive tree size | **80 nodes** (3 roots, 6 keystones, 15 notables, 56 smalls) |
 
 ---
 
@@ -32,21 +33,21 @@ This file captures the full game spec, confirmed decisions, proposed original na
 
 | Layer | Choice |
 |---|---|
-| Framework | React 18 + Vite |
+| Framework | React 19 + Vite |
 | Language | TypeScript |
-| State | Zustand (single store, sliced) |
+| State | Zustand (single store) |
 | Styling | Tailwind CSS |
-| Persistence | localStorage (autosave every 30s + on tab close) |
-| Tree pan/zoom | Canvas library (Konva / `react-konva`) |
+| Persistence | localStorage (autosave every 30s) |
+| Tree rendering | SVG with pan/zoom/click |
 | Animation | Framer Motion |
-| Number formatting | `Intl.NumberFormat` |
+| Number formatting | Inline (no external library yet) |
 | Deploy target | Vercel static |
 
 No backend required for MVP. No environment variables required. No third-party integrations required.
 
 ---
 
-## 3. Revised v1 Cuts (Content Volume, Not Systems)
+## 3. Revised v1 Cuts
 
 The user explicitly rejected cutting load-bearing systems. The following reduce **content quantity** while preserving mechanics depth.
 
@@ -57,12 +58,82 @@ The user explicitly rejected cutting load-bearing systems. The following reduce 
 | 10 acts | **8 acts** | Shorter campaign, Trials still land at appropriate levels |
 | Ascendancies | **Keep 2 per class** | Core to build variety; not touched |
 | Separate elemental resists | **Keep separate** | Load-bearing for gearing loop |
-| Full map affix rolling | **Keep full system** | Load-bearing for endgame loop |
-| Passive ES regen | **Keep simplified** | Accepted to reduce tick-complexity and offline-calc edge cases |
+| Full affix rolling | **Keep full system** | Load-bearing for endgame loop |
+| Passive ES regen | **Keep delay-based recharge** | Accepted to reduce tick-complexity and offline-calc edge cases |
 
 ---
 
-## 4. Original Naming Table
+## 4. Milestone Breakdown
+
+### M1 — Core Loop ✅
+- [x] Project scaffold (React + Vite + TypeScript + Tailwind + Zustand)
+- [x] Tick loop at 5 ticks/sec (`TICK_RATE = 200ms` in `src/data/balance.ts`)
+- [x] Three classes with unique base stats and starter gear
+- [x] Auto-combat (player vs. monster)
+- [x] XP, leveling, passive points
+- [x] Death and respawn
+- [x] Save/load with versioning and migration
+- [x] Zone selection and progression (3 zones implemented)
+
+### M2 — Items & Crafting ✅
+- [x] 9 equipment slots
+- [x] Item rarities (normal/magic/rare) with rarity colors
+- [x] Base items and affix pools with tiers
+- [x] 9 crafting orbs/currencies
+- [x] Inventory with equip/unequip/sell/auto-sell
+- [x] Equipment panel with stat summary
+- [x] Item tooltips
+- [x] Currency system
+
+### M3 — Passive Tree & Ascendancies ✅
+- [x] 80-node passive tree (3 roots, 6 keystones, 15 notables, 56 smalls)
+- [x] SVG renderer with pan/zoom/click
+- [x] Allocation and refund with connectivity validation
+- [x] 6 keystones with special hooks
+- [x] Ascendancies: 2 per class (6 total)
+- [x] Trials at levels 30/50/65/75 (8 ascendancy points total)
+- [x] Passive points from level-ups
+
+### M4 — Campaign & Combat Depth ✅
+- [x] Shattered Coast zone with 8+ monster types
+- [x] Monster damage components (physical/cold/lightning/fire/chaos)
+- [x] Resistance system with caps
+- [x] Armour mitigation and evasion formulas
+- [x] Energy Shield before Life
+- [x] Life regen and ES recharge delay
+- [x] Elite monsters with auras
+- [x] Boss phases (Storm-Wrecked Warden)
+- [x] Combat event system
+- [x] Toggle-able combat log
+- [x] Floating combat text with scatter
+- [x] Character stat summary with mitigation/evasion estimates
+
+### M4.5 — Skills & Ascendancy Redesign ✅
+- [x] Core skill/support types and data files
+- [x] Skill panel (4 skill slots, support slots per skill)
+- [x] Gem XP/leveling (skills/supports level with use, max level 20)
+- [x] Combat integration: `simulateTick` iterates equipped skills, scales skill/support damage by gem level, grants gem XP on hit, emits `gemLeveledUp` events
+- [x] 6-class roster restored/added: Brute, Stalker, Acolyte, Oracle, Warlord, Plaguebringer
+- [x] Ascendancy data replaced with Fateseer, Herald, Contagion, Virulent, Vanguard, Marshal
+- [x] Ascendancy wheel renderer with 12-node layout (5 keystones + 7 smalls)  - [x] Choice-keystone pickers: Heralds (6 auras) and Marshal armies (5 armies)
+  - [x] Twin Heralds (`herald_k3`) supports picking two auras via a dual-choice picker
+  - [x] Herald of Gold grants +% item rarity and +% extra item chance on kills; +50% stronger with Unwavering Declaration
+  - [x] Keystone special hooks and `validate:ascendancies` (Judgment, Gold, Iron Legion, Skirmishers now wired)
+  - [x] Save schema migration for skills/equipped supports/ascendancy choices
+
+### Remaining for full M4 / M5
+- [ ] Complete 8-act campaign zones 4–8
+- [ ] Wire offline progress on startup
+- [x] Call `loadGame()` on app boot
+- [ ] Implement party/minion system so Herald auras and Marshal armies target the whole party set
+- [ ] Nexus endgame / Rift Crystals
+- [ ] 6 unique items
+- [ ] Full map affix rolling
+- [ ] Remove or use `konva` / `react-konva` dependencies
+
+---
+
+## 5. Original Naming Table
 
 Avoid all Path of Exile trademarked terms.
 
@@ -77,128 +148,80 @@ Avoid all Path of Exile trademarked terms.
 | Pinnacle boss | **The Primeval Sovereign** |
 
 ### Classes & Ascendancies (2 per class)
-| Base Class | Primary Stat | Ascendancy 1 | Ascendancy 2 |
-|---|---|---|---|
-| Brute | Strength | **Titan** (Defense/Regen) | **Bloodrager** (Offense/Life Spend) |
-| Stalker | Dexterity | **Shadowblade** (Crit/Poison) | **Marksman** (Speed/Hits) |
-| Acolyte | Intelligence | **Archmage** (Raw Spell Damage) | **Spellbinder** (Shield/Wards) |
+| Base Class | Primary Stat | Passive Root | Ascendancy A | Ascendancy B |
+|---|---|---|---|---|
+| Brute | Strength | Warlord region | **Juggernaut** (Armour/Life) — *placeholder, pending redesign* | **Berserker** (Physical Damage/Attack Speed) — *placeholder, pending redesign* |
+| Warlord | Strength | Warlord region | **Vanguard** (Momentum Offense) — *FINAL* | **Marshal** (Momentum Defense) — *FINAL* |
+| Stalker | Dexterity | Plaguebringer region | **Deadeye** (Accuracy/Crit) — *placeholder, pending redesign* | **Assassin** (Evasion/Crit) — *placeholder, pending redesign* |
+| Plaguebringer | Dexterity | Plaguebringer region | **Virulent** (Single-target DOT) — *FINAL* | **Contagion** (Pack-spreading DOT) — *FINAL* |
+| Acolyte | Intelligence | Oracle region | **Elementalist** (Spell Damage/Resistances) — *placeholder, pending redesign* | **Occultist** (Energy Shield/Chaos) — *placeholder, pending redesign* |
+| Oracle | Intelligence | Oracle region | **Fateseer** (Deterministic hits) — *FINAL* | **Herald** (Standing auras) — *FINAL* |
+
+**Note:** The passive tree retains its three original roots (Warlord, Plaguebringer, Oracle regions). Old and new classes share roots by stat focus; a full six-root redesign is on hold for v1.
 
 ### Crafting Currencies (Orbs)
-| PoE-like Function | Proposed Original Name |
+| Function | Name |
 |---|---|
-| Transmute | **Orb of Awakening** |
-| Alteration | **Orb of Mutation** |
-| Regal | **Orb of Sovereignty** |
-| Alchemy | **Orb of Genesis** |
-| Chaos | **Orb of Entropy** |
-| Exalt | **Orb of Triumph** |
-| Annul | **Orb of the Void** |
-| Scour | **Orb of Cleansing** |
-| Regret | **Orb of Penance** |
-
-### Unique Items (v1 — 6 total)
-1. Doombringer’s Edge
-2. Veil of the Night
-3. Stormcaller’s Stride
-4. Heart of Flame
-5. Crown of the Fallen
-6. Void Gaze
+| Normal → Magic | **Orb of Awakening** |
+| Reroll Magic | **Orb of Mutation** |
+| Magic → Rare | **Orb of Sovereignty** |
+| Normal → Rare | **Orb of Genesis** |
+| Reroll Rare | **Orb of Entropy** |
+| Add affix to Rare | **Orb of Triumph** |
+| Remove one affix | **Orb of the Void** |
+| Remove all affixes | **Orb of Cleansing** |
+| Refund passive point | **Orb of Penance** |
 
 ### Campaign Zones (8 Acts)
-1. The Shattered Coast
-2. Desolate Wastes
-3. Ruined Bastion
+1. The Shattered Coast ✅
+2. Desolate Wastes ✅
+3. Ruined Bastion ✅
 4. Crimson Swamps
 5. Frostbound Peaks
 6. Cursed Catacombs
 7. Halls of Judgment
 8. Elysian Threshold
 
-### Trial Placement (with 8 acts)
-- **Trial of the Forge** — Act 3 (level ~30): unlocks first ascendancy choice
-- **Trial of the Void** — Act 6 (level ~60): unlocks second ascendancy choice
-- Two additional endgame Crucible trials (in maps) unlock the remaining ascendancy passives
+### Trial Placement
+- **Trial of Ascension** — Act 3 (level ~30): unlocks first ascendancy choice, 2 points
+- **Trial of Mastery** — Act 6 (level ~50): unlocks second ascendancy choice, 2 points
+- **Crucible of Valor** — Act 7 (level ~65): 2 points
+- **Crucible of Legends** — Act 8 (level ~75): 2 points
+- 8 ascendancy points total; trials grant ascendancy points ONLY, never support slots.
 
 ---
 
-## 5. Simplifications Retained / Rejected
+## 6. Simplifications Retained / Rejected
 
 | Proposal | Status |
 |---|---|
 | Single "Elemental Resistance" stat | **Rejected** — keep Fire/Cold/Lightning separate |
 | Rift Hazard Level instead of rolled affixes | **Rejected** — keep full map affix rolling |
-| ES recharges after 4s without hit | **Accepted simplification** — passive flat regen per tick |
+| ES recharges after 4s without hit | **Accepted** — 3 seconds without damage |
 | Reduce to 1 ascendancy per class | **Rejected** — keep 2 per class |
+| Passive tree renderer | **SVG** accepted over Konva |
 
 ---
 
-## 6. Third-Party Integrations / Services
+## 7. Engineering Requirements
 
-### Required for MVP
-_None — the spec is explicitly client-side only._
-
-### Optional Future Integrations
-| Service Category | Options | Why Optional |
-|---|---|---|
-| Cloud saves | Supabase, Firebase | Solve localStorage wipe / cross-device sync |
-| Analytics | PostHog, Google Analytics | Track progression drop-offs |
-| Monetization | Ko-fi, Stripe, Patreon | Player support without affecting gameplay |
-
-**Decision:** No integrations for v1.
-
----
-
-## 7. Revised Milestone Breakdown
-
-| Milestone | Scope |
-|---|---|
-| **M1** | Scaffold project. Brute class only. Tick loop (10/sec). Damage/XP/level formulas. One zone. Auto-fighting. Save/load hooks. |
-| **M2** | Item slots, rarities, affix pools with tiers, drops, equipment affecting stats, all 9 orbs, crafting UI. |
-| **M3** | Passive tree with **80 nodes**, interactive Konva render, allocation/respec, all **3 classes + 2 ascendancies each**. |
-| **M4** | **8-act** campaign config, act bosses, **2 Trials** (Acts 3 and 6), **6 ascendancies** unlocked progressively. |
-| **M5** | Nexus endgame (Rift Crystals with **full affix rolling**), pinnacle boss, **6 uniques**, offline progress loading overlay, tooltips, number formatting, auto-sell filters. |
-
----
-
-## 8. Engineering Requirements
-
-- All content lives in `src/data/` as JSON/TS data files.
-- Combat must be deterministic pure functions of `(state, ticks)`.
-- Save schema must be versioned with migration stub.
-- Autosave must use temp-key + verify + swap pattern.
-- `npm run dev` and `npm run build` must work out of the box.
-- Include `BALANCE.md` and `src/data/balance.ts` for tuning constants.
+- All content lives in `src/data/` as TypeScript data files.
+- Combat is a deterministic pure function: `simulateTick(state) => { state, events }`.
+- Save schema is versioned with migration stub.
+- Autosave uses temp-key + verify + swap pattern.
+- `bun run dev` and `bun run build` must work out of the box.
+- `BALANCE.md` and `src/data/balance.ts` document tuning constants.
 - No environment variables.
-- Offline progress computed in 1-hour chunks behind a loading overlay.
+- Offline progress constants exist but the loading overlay is not yet implemented.
 
 ---
 
-## 9. M2 Deviations & Notes
+## 8. Open Questions Remaining
 
-M2 is functionally complete. The following are intentional deviations from the full spec to keep scope manageable:
-
-| Spec Item | Implemented | Deviation / Note |
-|---|---|---|
-| 6 affixes per rare (3 prefix / 3 suffix) | 4 affixes on rare genesis/entropy rolls | v1 keeps rare rolls to 4 affixes to limit complexity; exalt/triumph can still add more |
-| Full affix pool | 7 prefixes, 7 suffixes | Smaller initial pool covering damage, life, ES, armour, attributes, resistances, attack speed, crit |
-| Currency drops | Only common orbs drop from monsters | `awakening`, `mutation`, `cleansing` can drop; rarer orbs reserved for bosses/M5 |
-| Unique items | Not yet | Uniques are an M5 deliverable |
-| Crafting UI animations | Basic apply only | No special result animation in v1 |
-| Auto-sell filters | Normal + Magic toggle only | Filter by character level threshold exists but UI threshold input not exposed |
-| Two ring slots | `ring1` / `ring2` in equipment | UI handles ring assignment automatically |
-| Item tooltip | Stats + affixes shown | All base and most affix-derived stats are now displayed |
-
-### M2 Expanded Affix Pool (34 total)
-
-**Prefixes (17):** Brutal, Sharpened, Vital, Arcane, Reinforced, Mighty, Scholar's, Charged, Frostbound, Serrated, Voltaic, Oppressing, Precise, Swift, Hardened, Robust, Ruthless
-
-**Suffixes (17):** of the Gale, of Piercing, of Devastation, of the Forge, of the North, of the Storm, of the Wind, of Sparks, of Ice, of Bleeding, of Shocks, of Despair, of the Hawk, of the Ghost, of the Mountain, of the Titan, of Riches
-
-## 10. Open Questions Remaining
-
-1. Should I proceed to **M3: Passive Tree** next?
-2. Any adjustments to M2 balance (drop rate, affix values, currency supply) before moving on?
+1. Should we complete zones 4–8 next, or move to the Nexus endgame first?
+2. Should we wire the offline progress overlay now, or after the campaign is complete?
+3. Should we remove the unused `konva` and `react-konva` dependencies?
 
 ---
 
-*Last updated: 2026-07-21*
+*Last updated: 2026-07-23 (M4.5 gem XP/leveling, CombatEffects hover tooltips, delayed damage log entries, party-set self-buff limitation documented)*

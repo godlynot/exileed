@@ -47,6 +47,8 @@ function migrateSave(parsed: Record<string, unknown>): Partial<GameState> {
     if (combat.delayedDamageQueue === undefined) combat.delayedDamageQueue = []
     if (combat.ailments === undefined) combat.ailments = {}
     if (combat.virulent === undefined) combat.virulent = { stacks: {}, septicemiaMultiplier: {}, calcifyAccumulator: {}, slow: {}, patientZeroTarget: null }
+    if (combat.monsterDebuffs === undefined) combat.monsterDebuffs = {}
+    if (combat.plaguewindCarryover === undefined) combat.plaguewindCarryover = []
   }
 
   // Refund passive points from any old tree data and reset to the class root.
@@ -61,6 +63,7 @@ function migrateSave(parsed: Record<string, unknown>): Partial<GameState> {
     character,
     passiveTree: PASSIVE_TREE,
     saveVersion: SAVE_VERSION,
+    tickCounter: state.tickCounter ?? 0,
   } as Partial<GameState>
 }
 

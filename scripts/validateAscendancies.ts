@@ -9,6 +9,7 @@ const VALID_SPECIALS = new Set<StatKey>([
   'special:septicemia', 'special:cardiac_arrest', 'special:asphyxiation', 'special:cirrhosis', 'special:calcify',
   'special:relentless_advance', 'special:overrun', 'special:breakneck', 'special:war_machine', 'special:blitz',
   'special:rallying_presence', 'special:hold_the_line', 'special:bannermans_resolve', 'special:bulwarks_wrath', 'special:war_of_attrition',
+  'special:momentum',
 ])
 
 const statSet = new Set<string>(STAT_KEYS)
@@ -18,18 +19,26 @@ function validateWheel(ascendancyId: string, nodes: AscendancyNode[]) {
   const nodeMap = new Map(nodes.map(n => [n.id, n]))
   const entry = nodes.find(n => !n.requires || n.requires.length === 0)
 
-  if (nodes.length !== 12) {
-    issues.push(`${ascendancyId}: expected 12 nodes, found ${nodes.length}`)
+  const freeNodes = nodes.filter(n => n.free)
+  const paidNodes = nodes.filter(n => !n.free)
+
+  if (paidNodes.length !== 12) {
+    issues.push(`${ascendancyId}: expected 12 paid nodes, found ${paidNodes.length}`)
   }
 
-  const keystones = nodes.filter(n => n.type === 'keystone')
-  const smalls = nodes.filter(n => n.type === 'small')
+  const keystones = paidNodes.filter(n => n.type === 'keystone')
+  const smalls = paidNodes.filter(n => n.type === 'small')
 
   if (keystones.length !== 5) {
     issues.push(`${ascendancyId}: expected 5 keystones, found ${keystones.length}`)
   }
   if (smalls.length !== 7) {
     issues.push(`${ascendancyId}: expected 7 smalls, found ${smalls.length}`)
+  }
+  for (const free of freeNodes) {
+    if (free.type === 'keystone') {
+      issues.push(`${ascendancyId}: free node ${free.id} cannot be a keystone`)
+    }
   }
 
   // Build adjacency from requires
@@ -66,7 +75,7 @@ function validateWheel(ascendancyId: string, nodes: AscendancyNode[]) {
     issues.push(`${ascendancyId}: no entry node found`)
   }
 
-  // Gating: every keystone must have a small on every path from entry
+  // Gating: every keystone must have a small on every path from entry (free nodes don't gate)
   for (const keystone of keystones) {
     if (!keystone.requires || keystone.requires.length === 0) {
       issues.push(`${ascendancyId}: keystone ${keystone.id} is not gated`)
@@ -105,11 +114,41 @@ function validateWheel(ascendancyId: string, nodes: AscendancyNode[]) {
   }
 }
 
+function validateMutualExclusivity() {
+  const pairs: [string, string][] = [
+    ['herald_k2', 'herald_k3'],
+    ['van_k3', 'van_k4'],
+  ]
+  for (const [a, b] of pairs) {
+    let foundA = false
+    let foundB = false
+    for (const ascendancy of Object.values(ASCENDANCIES)) {
+      for (const node of ascendancy.nodes) {
+        if (node.id === a) {
+          foundA = true
+          if (!node.mutuallyExclusiveWith?.includes(b)) {
+            issues.push(`mutual-exclusivity: ${a} must list ${b} as mutually exclusive`)
+          }
+        }
+        if (node.id === b) {
+          foundB = true
+          if (!node.mutuallyExclusiveWith?.includes(a)) {
+            issues.push(`mutual-exclusivity: ${b} must list ${a} as mutually exclusive`)
+          }
+        }
+      }
+    }
+    if (!foundA) issues.push(`mutual-exclusivity: ${a} not found in any ascendancy`)
+    if (!foundB) issues.push(`mutual-exclusivity: ${b} not found in any ascendancy`)
+  }
+}
+
 function validate() {
   console.log('== Ascendancy Validation ==\n')
   for (const ascendancy of Object.values(ASCENDANCIES)) {
     validateWheel(ascendancy.id, ascendancy.nodes)
   }
+  validateMutualExclusivity()
 
   if (issues.length > 0) {
     console.log(`\n== ${issues.length} issue(s) found ==\n`)

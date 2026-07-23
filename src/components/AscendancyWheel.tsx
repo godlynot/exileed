@@ -26,9 +26,12 @@ export function AscendancyWheel({ ascendancy, allocatedNodes, availablePoints, o
   const [pickingSelections, setPickingSelections] = useState<string[]>([])
   const palette = PALETTE[ascendancy.id] ?? { stroke: '#d4a017', fill: '#15161d' }
 
+  const paidAllocatedCount = useMemo(() => ascendancy.nodes.filter(n => allocatedSet.has(n.id) && !n.free).length, [ascendancy.nodes, allocatedSet])
+
   const canAllocate = (node: AscendancyNode) => {
+    if (node.free) return false
     if (allocatedSet.has(node.id)) return false
-    if (allocatedNodes.length >= availablePoints) return false
+    if (paidAllocatedCount >= availablePoints) return false
     if (node.requires && node.requires.some(req => !allocatedSet.has(req))) return false
     return true
   }
@@ -145,11 +148,13 @@ export function AscendancyWheel({ ascendancy, allocatedNodes, availablePoints, o
             <div className="text-sm font-serif text-[#d4a017]">{hovered.name}</div>
             <div className="text-xs text-gray-300 mt-1">{hovered.description}</div>
             <div className="text-[10px] text-gray-500 mt-1">
-              {allocatedSet.has(hovered.id)
-                ? 'Allocated'
-                : canAllocate(hovered)
-                  ? 'Click to allocate'
-                  : 'Locked'}
+              {hovered.free
+                ? 'Free (auto-selected)'
+                : allocatedSet.has(hovered.id)
+                  ? 'Allocated'
+                  : canAllocate(hovered)
+                    ? 'Click to allocate'
+                    : 'Locked'}
             </div>
           </div>
         )}
@@ -158,7 +163,8 @@ export function AscendancyWheel({ ascendancy, allocatedNodes, availablePoints, o
       <div className="text-center text-sm text-gray-400 mt-3">
         Points allocated:{' '}
         <span className="text-[#d4a017]">
-          {allocatedNodes.length} / {availablePoints}
+          {paidAllocatedCount} / {availablePoints}
+          {ascendancy.nodes.some(n => n.free) && ` (+${ascendancy.nodes.filter(n => n.free && allocatedSet.has(n.id)).length} free)`}
         </span>
       </div>
 

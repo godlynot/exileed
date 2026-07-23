@@ -21,6 +21,7 @@ import { SKILLS } from '../data/skills.ts'
 import { SUPPORTS } from '../data/supports.ts'
 import { createMomentumState, gainMomentum, tickMomentumDecay, effectiveCooldownTicks, momentumDamageMultiplier, isMaxMomentum, breakneckRaiseCap } from './momentum.ts'
 import { createAilmentFromSkill, createAilmentFromAura, tickAilments } from './ailments.ts'
+import { getGemLevel, gainGemXpForSkillUse, skillDamageMultiplier } from './gems.ts'
 
 let eventIdCounter = 0
 
@@ -88,6 +89,8 @@ export function createCombatState(monster: Monster): CombatState {
     delayedDamageQueue: [],
     ailments: {},
     virulent: { stacks: {}, septicemiaMultiplier: {}, calcifyAccumulator: {}, slow: {}, patientZeroTarget: null },
+    monsterDebuffs: {},
+    plaguewindCarryover: [],
   }
 }
 
@@ -138,15 +141,18 @@ function supportsForSkill(equipped: EquippedSkill, skill: Skill): Support[] {
     .filter(s => !!s && s.allowedTags.some(tag => skill.tags.includes(tag)))
 }
 
-function aggregateSupportModifiers(supports: Support[]) {
+function aggregateSupportModifiers(supports: Support[], supportIds: string[], character: Character) {
   const flat: Record<string, number> = {}
   const increased: Record<string, number> = {}
   const more: Record<string, number> = {}
-  for (const support of supports) {
+  for (let i = 0; i < supports.length; i++) {
+    const support = supports[i]
+    const level = getGemLevel(character, supportIds[i])
+    const multiplier = 1 + (level - 1) * 0.02
     for (const mod of support.modifiers) {
-      if (mod.mode === 'flat') flat[mod.stat] = (flat[mod.stat] ?? 0) + mod.value
-      if (mod.mode === 'increased') increased[mod.stat] = (increased[mod.stat] ?? 0) + mod.value
-      if (mod.mode === 'more') more[mod.stat] = (more[mod.stat] ?? 0) + mod.value
+      if (mod.mode === 'flat') flat[mod.stat] = (flat[mod.stat] ?? 0) + mod.value * multiplier
+      if (mod.mode === 'increased') increased[mod.stat] = (increased[mod.stat] ?? 0) + mod.value * multiplier
+      if (mod.mode === 'more') more[mod.stat] = (more[mod.stat] ?? 0) + mod.value * multiplier
     }
   }
   return { flat, increased, more }
@@ -163,20 +169,25 @@ function markHit(combat: CombatState, monsterId: string): CombatState {
 
 function heraldDamageMultiplier(character: Character, combat: CombatState, monster: Monster, isFirstHitTarget: boolean): number {
   const special = character.special
-  if (!special.proclaimHerald && !special.twinHeralds) return 1
-
-  const active = getHeraldActive(special, character.keystoneChoices)
+  const active = combat.herald.active
+  if (active.length === 0) return 1
 
   let multiplier = 1
   for (const aura of active) {
-    if (aura === 'light') multiplier += special.unwaveringDeclaration ? 0.18 : 0.1
+    if (aura === 'light') {
+      multiplier += special.unwaveringDeclaration ? 0.18 : 0.1
+      // Unwavering Light: blinded enemies take further increased damage
+      if (special.unwaveringDeclaration && combat.monsterDebuffs.blind) {
+        multiplier += 0.15
+      }
+    }
     if (aura === 'gold') { /* no combat damage */ }
     if (aura === 'tide') multiplier += combat.herald.tideRamp * (special.unwaveringDeclaration ? 0.5 : 0.3)
     if (aura === 'silence') { /* damage reduction, handled elsewhere */ }
     if (aura === 'storms') { /* handled in tick storm */ }
     if (aura === 'judgment') {
       const healthPercent = combat.monsterLife / monster.maxLife
-      if (healthPercent <= 0.35) {
+      if (healthPercent <= 0.2) {
         multiplier += special.unwaveringDeclaration ? 0.35 : 0.2
       }
     }
@@ -189,9 +200,9 @@ function heraldDamageMultiplier(character: Character, combat: CombatState, monst
   return multiplier
 }
 
-function heraldDamageReduction(special: PassiveSpecialEffects, choices: Record<string, string>): number {
-  if (!special.proclaimHerald && !special.twinHeralds) return 0
-  const active = getHeraldActive(special, choices)
+function heraldDamageReduction(combat: CombatState, special: PassiveSpecialEffects): number {
+  const active = combat.herald.active
+  if (active.length === 0) return 0
   return active.includes('silence') ? (special.unwaveringDeclaration ? 0.12 : 0.08) : 0
 }
 
@@ -211,11 +222,11 @@ function skillDamage(
   ailments: AilmentInstance[]
 } {
   const supports = supportsForSkill(equipped, skill)
-  const supportMods = aggregateSupportModifiers(supports)
+  const supportMods = aggregateSupportModifiers(supports, equipped.supportIds, character)
 
   const isHit = character.special.alwaysHit ? true : Math.random() <= hitChance(character.accuracy, monster.evasion, evasionStacks)
   if (!isHit) {
-    return { damage: 0, damageType: skill.damageType, crit: false, isHit: false, nextEquipped: { ...equipped, cooldownRemaining: effectiveCooldownTicks(skill.cooldownTicks, combat.momentum) }, ailments: [] }
+    return { damage: 0, damageType: skill.damageType, crit: false, isHit: false, nextEquipped: { ...equipped, cooldownRemaining: effectiveCooldownTicks(skill.cooldownTicks, combat.momentum, character) }, ailments: [] }
   }
 
   const effectiveness = skill.damageEffectiveness
@@ -227,10 +238,12 @@ function skillDamage(
   const weaponMin = character.basePhysicalDamageMin ?? 0
   const weaponMax = character.basePhysicalDamageMax ?? 0
   const levelMultiplier = 1 + (character.level - 1) * 0.05
+  const gemLevel = getGemLevel(character, equipped.skillId)
+  const gemMultiplier = skillDamageMultiplier(gemLevel)
   const rawBaseRoll = character.special.perfectCalculation
     ? skill.baseDamageMax + weaponMax
     : rollDamage(skill.baseDamageMin + weaponMin, skill.baseDamageMax + weaponMax)
-  const rawBase = Math.floor(rawBaseRoll * levelMultiplier)
+  const rawBase = Math.floor(rawBaseRoll * levelMultiplier * gemMultiplier)
   const lightningPct = character.special.physToLightning ? character.special.physToLightning / 100 : 0
   const baseAfterConversion = lightningPct > 0 ? Math.floor(rawBase * lightningPct) : 0
 
@@ -260,7 +273,7 @@ function skillDamage(
     damage = raw * (1 + inc) * m
   }
 
-  let nextEquipped: EquippedSkill = { ...equipped, cooldownRemaining: effectiveCooldownTicks(skill.cooldownTicks, combat.momentum), hitCounter: equipped.hitCounter + 1 }
+  let nextEquipped: EquippedSkill = { ...equipped, cooldownRemaining: effectiveCooldownTicks(skill.cooldownTicks, combat.momentum, character), hitCounter: equipped.hitCounter + 1 }
 
   if (character.special.measuredStrikes && nextEquipped.hitCounter % 3 === 0) {
     damage *= 2
@@ -273,19 +286,14 @@ function skillDamage(
   if (skill.targeting === 'pack') damage *= 1.5
 
   // Momentum damage bonus
-  damage *= momentumDamageMultiplier(combat.momentum)
-
-  // War Machine: more damage per stack but handled above by Momentum; here just ensure multiplier is stronger
-  if (character.special.warMachine) {
-    damage *= 1 + combat.momentum.stacks * 0.05
-  }
+  damage *= momentumDamageMultiplier(combat.momentum, character)
 
   // Herald damage multiplier
   const firstHit = isFirstHit(combat, monster.id)
   damage *= heraldDamageMultiplier(character, combat, monster, firstHit)
 
   // Overrun: at max momentum, 20% of damage is unavoidable flat
-  if (character.special.overrun && isMaxMomentum(combat.momentum)) {
+  if (character.special.overrun && isMaxMomentum(combat.momentum, character)) {
     const flatPortion = damage * 0.2
     damage = damage * 0.8 + flatPortion * 2
   }
@@ -324,6 +332,7 @@ interface SkillProcessResult {
   combat: CombatState
   ailments: AilmentInstance[]
   crit: boolean
+  extraEvents: CombatEvent[]
 }
 
 function processSkillHits(character: Character, monster: Monster, combat: CombatState): SkillProcessResult {
@@ -333,6 +342,7 @@ function processSkillHits(character: Character, monster: Monster, combat: Combat
   let currentStacks = combat.monsterEvasionStacks
   const nextEquipped: EquippedSkill[] = []
   let ailments: AilmentInstance[] = []
+  const leveledUp: { gemId: string; newLevel: number }[] = []
 
   for (const equipped of character.equippedSkills) {
     const skill = SKILLS[equipped.skillId]
@@ -348,6 +358,9 @@ function processSkillHits(character: Character, monster: Monster, combat: Combat
     if (result.isHit) {
       currentStacks = 0
       evaded = false
+      const xpResult = gainGemXpForSkillUse(character, equipped, result.damage)
+      character = { ...character, ownedGems: xpResult.ownedGems }
+      leveledUp.push(...xpResult.leveledUp)
     } else {
       currentStacks++
     }
@@ -358,6 +371,11 @@ function processSkillHits(character: Character, monster: Monster, combat: Combat
   }
 
   character = { ...character, equippedSkills: nextEquipped }
+
+  const extraEvents: CombatEvent[] = leveledUp.map(l => {
+    const gem = SKILLS[l.gemId] ?? SUPPORTS[l.gemId]
+    return makeEvent({ type: 'gemLeveledUp', gemId: l.gemId, gemName: gem?.name ?? l.gemId, newLevel: l.newLevel })
+  })
 
   const event: CombatEvent = evaded
     ? makeEvent({ type: 'hitAvoided', source: 'player', targetId: monster.id, reason: 'missed' })
@@ -370,7 +388,7 @@ function processSkillHits(character: Character, monster: Monster, combat: Combat
         crit: anyCrit,
       })
 
-  return { character, damage: totalDamage, evaded, event, monsterEvasionStacks: currentStacks, combat, ailments, crit: anyCrit }
+  return { character, damage: totalDamage, evaded, event, monsterEvasionStacks: currentStacks, combat, ailments, crit: anyCrit, extraEvents }
 }
 
 function applyDevOverrides(character: Character): Character {
@@ -385,6 +403,9 @@ function applyDevOverrides(character: Character): Character {
   }
 }
 
+// Herald auras and Marshal armies are designed as party-set effects. In v1 there is no
+// party/minion system, so they are applied to the player character as self-buffs. When a
+// party framework is added, these hooks should be moved to target the whole party set.
 function getHeraldActive(special: PassiveSpecialEffects, choices: Record<string, string>): ('light' | 'gold' | 'tide' | 'silence' | 'storms' | 'judgment')[] {
   if (special.twinHeralds) {
     const choice = choices['herald_k3'] ?? 'light'
@@ -397,8 +418,8 @@ function getHeraldActive(special: PassiveSpecialEffects, choices: Record<string,
   return [special.proclaimHerald]
 }
 
-function hasHerald(special: PassiveSpecialEffects, choices: Record<string, string>, aura: 'light' | 'gold' | 'tide' | 'silence' | 'storms' | 'judgment'): boolean {
-  return getHeraldActive(special, choices).includes(aura)
+function hasHerald(combat: CombatState, aura: 'light' | 'gold' | 'tide' | 'silence' | 'storms' | 'judgment'): boolean {
+  return combat.herald.active.includes(aura)
 }
 
 export function simulateTick(state: GameState): { state: GameState; events: CombatEvent[] } {
@@ -414,10 +435,22 @@ export function simulateTick(state: GameState): { state: GameState; events: Comb
   const zone = zones.find(z => z.id === state.activeZoneId)
 
   // Herald storm periodic lightning tick
-  const activeHeralds = getHeraldActive(character.special, character.keystoneChoices)
+  // Herald auras are set-wide effects on the party set (currently just the player).
+  // Apply pending delayed damage from Fateseer Foreseen Doom at the start of the tick
+  if (character.isAlive && combat.delayedDamageQueue.length > 0) {
+    const tickDelayed = combat.delayedDamageQueue[0] ?? 0
+    const nextLife = character.life - tickDelayed
+    character = { ...character, life: Math.max(1, nextLife) }
+    combat = { ...combat, delayedDamageQueue: combat.delayedDamageQueue.slice(1) }
+    events.push(makeEvent({ type: 'delayedDamageTick', targetId: character.id, damage: tickDelayed }))
+  }
+
+  // Snapshot the active auras into combat state so all combat hooks read from the same source.
+  combat = { ...combat, herald: { ...combat.herald, active: getHeraldActive(character.special, character.keystoneChoices) } }
+  const activeHeralds = combat.herald.active
   if (combat.monster && combat.monsterLife > 0 && activeHeralds.includes('storms')) {
     const stormPeriod = 5 * TICKS_PER_SECOND
-    if (state.lastSaveTime % stormPeriod < TICK_RATE) {
+    if (state.tickCounter % stormPeriod < TICK_RATE) {
       const stormDamage = Math.floor(character.level * 3 + 10)
       const targetId = combat.monster.id
       combat = { ...combat, monsterLife: Math.max(0, combat.monsterLife - stormDamage) }
@@ -425,10 +458,13 @@ export function simulateTick(state: GameState): { state: GameState; events: Comb
     }
   }
 
-  // Marshal War of Attrition aura: apply DOT every second
+  // Marshal War of Attrition aura: apply DOT every second, scaling with general damage modifiers
   if (combat.monster && combat.monsterLife > 0 && character.special.warOfAttrition) {
-    if (state.lastSaveTime % TICKS_PER_SECOND < TICK_RATE) {
-      const dot = createAilmentFromAura('poison', character.maxLife * 0.05, 3)
+    if (state.tickCounter % TICKS_PER_SECOND < TICK_RATE) {
+      const inc = 1 + character.increasedPhysicalDamage
+      const more = character.morePhysicalDamage * (character.special.moreDamageMultiplier ?? 1)
+      const baseDot = character.maxLife * 0.05 * inc * more
+      const dot = createAilmentFromAura('poison', baseDot, 3)
       combat.ailments[combat.monster.id] = [...(combat.ailments[combat.monster.id] ?? []), dot]
       events.push(makeEvent({ type: 'ailmentApplied', targetId: combat.monster.id, ailmentType: 'poison' }))
     }
@@ -436,7 +472,7 @@ export function simulateTick(state: GameState): { state: GameState; events: Comb
 
   // Marshal Reapers army: apply a minor DOT every second to nearby enemies
   if (combat.monster && combat.monsterLife > 0 && character.special.bannermansResolve === 'reapers') {
-    if (state.lastSaveTime % TICKS_PER_SECOND < TICK_RATE) {
+    if (state.tickCounter % TICKS_PER_SECOND < TICK_RATE) {
       const dot = createAilmentFromAura('poison', Math.max(1, character.level * 2), 3)
       combat.ailments[combat.monster.id] = [...(combat.ailments[combat.monster.id] ?? []), dot]
       events.push(makeEvent({ type: 'ailmentApplied', targetId: combat.monster.id, ailmentType: 'poison' }))
@@ -451,10 +487,12 @@ export function simulateTick(state: GameState): { state: GameState; events: Comb
     combat = { ...combat, marshal: { ...combat.marshal, bulwarkFlat: 0 } }
   }
 
-  // Momentum decay tick (Relentless Advance pauses decay while in combat)
-  const inCombat = combat.monster !== null && combat.monsterLife > 0
-  if (!character.special.relentlessAdvance || !inCombat) {
-    combat = { ...combat, momentum: tickMomentumDecay(combat.momentum) }
+  // Momentum decay tick (only if Warlord has unlocked Momentum; Relentless Advance pauses decay while in combat)
+  if (character.special.momentum) {
+    const inCombat = combat.monster !== null && combat.monsterLife > 0
+    if (!character.special.relentlessAdvance || !inCombat) {
+      combat = { ...combat, momentum: tickMomentumDecay(combat.momentum) }
+    }
   }
 
   // Recovery: life regen (always) and ES recharge (after delay)
@@ -511,6 +549,7 @@ export function simulateTick(state: GameState): { state: GameState; events: Comb
     const skillResult = processSkillHits(character, monster, combat)
     character = skillResult.character
     combat = { ...combat, monsterEvasionStacks: skillResult.monsterEvasionStacks }
+    events.push(...skillResult.extraEvents)
     if (skillResult.damage > 0) {
       combat = { ...combat, lastDamageDealt: skillResult.damage, monsterLife: Math.max(0, combat.monsterLife - skillResult.damage) }
       events.push(skillResult.event)
@@ -541,17 +580,17 @@ export function simulateTick(state: GameState): { state: GameState; events: Comb
           const newSlow = Math.min(0.3, existingSlow + 0.03 * appliedAilments.length)
           combat = { ...combat, virulent: { ...combat.virulent, slow: { ...combat.virulent.slow, [monster.id]: newSlow } } }
         }
-        // Pandemic: spread a weaker copy to the pack in single-target mode by adding an extra stack
+        // Pandemic: seed a weaker copy of each ailment into the pack carryover
         if (character.special.pandemic) {
           const spread = appliedAilments.map(a => ({ ...a, id: `ail_pandemic_${eventIdCounter++}`, damagePerTick: a.damagePerTick * 0.5, stacks: 1 }))
-          combat.ailments[monster.id] = [...(combat.ailments[monster.id] ?? []), ...spread]
+          combat = { ...combat, plaguewindCarryover: [...combat.plaguewindCarryover, ...spread] }
           for (const ailment of spread) {
-            events.push(makeEvent({ type: 'ailmentApplied', targetId: monster.id, ailmentType: ailment.type }))
+            events.push(makeEvent({ type: 'ailmentApplied', targetId: 'pack', ailmentType: ailment.type }))
           }
         }
       }
       // Herald Tide ramp while untouched
-      if (hasHerald(character.special, character.keystoneChoices, 'tide')) {
+      if (hasHerald(combat, 'tide')) {
         const rampAmount = character.special.unwaveringDeclaration ? 0.1 : 0.06
         combat = { ...combat, herald: { ...combat.herald, tideRamp: Math.min(1, combat.herald.tideRamp + rampAmount) } }
       }
@@ -562,6 +601,14 @@ export function simulateTick(state: GameState): { state: GameState; events: Comb
           character = { ...character, energyShield: Math.min(character.maxEnergyShield, character.energyShield + esGain) }
         }
       }
+      // Herald of Light: chance to blind enemy on hit
+      if (activeHeralds.includes('light')) {
+        const blindChance = character.special.unwaveringDeclaration ? 1 : 0.25
+        if (Math.random() < blindChance) {
+          combat = { ...combat, monsterDebuffs: { ...combat.monsterDebuffs, blind: true } }
+        }
+      }
+
       combat = markHit(combat, monster.id)
     } else if (skillResult.evaded) {
       events.push(skillResult.event)
@@ -616,7 +663,14 @@ export function simulateTick(state: GameState): { state: GameState; events: Comb
   // Monster attacks player
   if (combat.monsterLife > 0) {
     const monsterSlow = character.special.asphyxiation ? (combat.virulent.slow[monster.id] ?? 0) : 0
-    const monsterHit = character.special.alwaysHit ? true : Math.random() <= hitChance(monster.accuracy, character.evasion, combat.playerEvasionStacks)
+    // Herald of Silence Unwavering: enemies are periodically silenced / slowed
+    const silenced = activeHeralds.includes('silence') && character.special.unwaveringDeclaration && Math.random() < 0.25
+    if (silenced) {
+      events.push(makeEvent({ type: 'hitAvoided', source: 'monster', targetId: character.id, reason: 'missed' }))
+      combat = { ...combat, lastDamageTaken: 0 }
+    } else {
+      const effectiveMonsterAccuracy = combat.monsterDebuffs.blind ? monster.accuracy * 0.5 : monster.accuracy
+      const monsterHit = character.special.alwaysHit ? true : Math.random() <= hitChance(effectiveMonsterAccuracy, character.evasion, combat.playerEvasionStacks)
     if (monsterHit) {
       let damageTaken = 0
       for (const component of monster.damage) {
@@ -661,7 +715,7 @@ export function simulateTick(state: GameState): { state: GameState; events: Comb
       }
 
       // Herald Silence damage reduction
-      damageTaken = Math.floor(damageTaken * (1 - heraldDamageReduction(character.special, character.keystoneChoices)))
+      damageTaken = Math.floor(damageTaken * (1 - heraldDamageReduction(combat, character.special)))
 
       // Fateseer Foreseen Doom: delay 40% of damage
       let delayed = 0
@@ -683,7 +737,9 @@ export function simulateTick(state: GameState): { state: GameState; events: Comb
       }
 
       if (delayed > 0) {
-        combat.delayedDamageQueue.push(delayed / (3 * TICKS_PER_SECOND))
+        const perTick = delayed / (3 * TICKS_PER_SECOND)
+        const newEntries = Array.from({ length: 3 * TICKS_PER_SECOND }, () => perTick)
+        combat = { ...combat, delayedDamageQueue: [...combat.delayedDamageQueue, ...newEntries] }
       }
 
       if (damageTaken > 0) {
@@ -711,18 +767,10 @@ export function simulateTick(state: GameState): { state: GameState; events: Comb
         crit: false,
       }))
 
-      // Apply delayed damage from queue
-      if (combat.delayedDamageQueue.length > 0) {
-        const tickDelayed = combat.delayedDamageQueue[0] ?? 0
-        life = character.life - tickDelayed
-        character = { ...character, life: Math.max(1, life) }
-        combat = { ...combat, delayedDamageQueue: combat.delayedDamageQueue.slice(1) }
-      }
-
       if (character.life <= 0) {
         character = { ...character, life: 0 }
         character = applyDeathPenalty(character)
-        combat = { ...combat, isRespawning: true, respawnTicks: character.respawnTimer }
+        combat = { ...combat, isRespawning: true, respawnTicks: character.respawnTimer, delayedDamageQueue: [] }
         events.push(makeEvent({ type: 'playerDied' }))
         return {
           state: { ...state, character, combat, zones, inventory, activeTrial, gamePhase },
@@ -733,12 +781,13 @@ export function simulateTick(state: GameState): { state: GameState; events: Comb
       combat = { ...combat, lastDamageTaken: 0, playerEvasionStacks: combat.playerEvasionStacks + 1 }
       events.push(makeEvent({ type: 'hitAvoided', source: 'monster', targetId: character.id, reason: 'evaded' }))
     }
+    }
   }
 
   // Monster killed
   if (combat.monsterLife <= 0) {
     let goldEarned = monster.goldReward
-    if (hasHerald(character.special, character.keystoneChoices, 'gold')) {
+    if (hasHerald(combat, 'gold')) {
       const goldMultiplier = character.special.unwaveringDeclaration ? 1.5 : 1.25
       goldEarned = Math.floor(goldEarned * goldMultiplier)
     }
@@ -749,19 +798,36 @@ export function simulateTick(state: GameState): { state: GameState; events: Comb
       events.push(makeEvent({ type: 'bossDefeated', bossId: monster.id }))
     }
 
-    // Momentum gain on kill (Skirmishers build faster)
-    const momentumGain = character.special.bannermansResolve === 'skirmishers' ? 2 : 1
-    let nextMomentum = gainMomentum(combat.momentum, momentumGain)
-    if (character.special.breakneck) {
-      nextMomentum = breakneckRaiseCap(nextMomentum)
+    // Momentum gain on kill (only for Warlords who have unlocked Momentum; Skirmishers build faster)
+    if (character.special.momentum) {
+      const momentumGain = character.special.bannermansResolve === 'skirmishers' ? 2 : 1
+      let nextMomentum = gainMomentum(combat.momentum, momentumGain, character)
+      if (character.special.breakneck) {
+        nextMomentum = breakneckRaiseCap(nextMomentum)
+      }
+      combat = { ...combat, momentum: nextMomentum }
+      events.push(makeEvent({ type: 'momentumChanged', stacks: combat.momentum.stacks }))
     }
-    combat = { ...combat, momentum: nextMomentum }
-    events.push(makeEvent({ type: 'momentumChanged', stacks: combat.momentum.stacks }))
 
     // Vanguard Blitz: at max momentum, echo damage to pack
-    if (character.special.blitz && isMaxMomentum(combat.momentum)) {
+    if (character.special.blitz && isMaxMomentum(combat.momentum, character)) {
       const echoDamage = combat.lastDamageDealt
       events.push(makeEvent({ type: 'hitLanded', source: 'player', targetId: 'pack', damage: echoDamage, damageType: 'physical', crit: false }))
+    }
+
+    // Unwavering Herald on-kill specials
+    const activeAuras = getHeraldActive(character.special, character.keystoneChoices)
+    if (character.special.unwaveringDeclaration) {
+      // Herald of Storms: bolts on killing blow
+      if (activeAuras.includes('storms')) {
+        const stormDamage = Math.max(1, Math.floor(character.level * 5 + character.basePhysicalDamageMax * 0.5))
+        events.push(makeEvent({ type: 'hitLanded', source: 'player', targetId: 'pack', damage: stormDamage, damageType: 'lightning', crit: false }))
+      }
+      // Herald of Judgment: detonate corpse for player-scaled splash (never % enemy max HP)
+      if (activeAuras.includes('judgment')) {
+        const detonationDamage = Math.max(1, Math.floor((character.basePhysicalDamageMin + character.basePhysicalDamageMax) * 0.5 * (1 + character.increasedPhysicalDamage) * character.morePhysicalDamage * (character.special.moreDamageMultiplier ?? 1)))
+        events.push(makeEvent({ type: 'hitLanded', source: 'player', targetId: 'pack', damage: detonationDamage, damageType: 'fire', crit: false }))
+      }
     }
 
     // Inevitability: cancel pending delayed damage on kill
@@ -779,7 +845,9 @@ export function simulateTick(state: GameState): { state: GameState; events: Comb
 
     // Plaguewind: spread DOTs on death
     if (character.special.plaguewind && combat.ailments[monster.id] && combat.ailments[monster.id].length > 0) {
-      // In single-target v1, spread has no pack target, but emit event for future
+      // In single-target v1, "rest of pack" is the next monster: carry the DOTs over
+      const carryover = combat.ailments[monster.id].map(a => ({ ...a, id: `ail_plaguewind_${eventIdCounter++}`, remainingTicks: a.remainingTicks }))
+      combat = { ...combat, plaguewindCarryover: [...combat.plaguewindCarryover, ...carryover] }
       events.push(makeEvent({ type: 'ailmentApplied', targetId: 'pack', ailmentType: combat.ailments[monster.id][0].type }))
     }
 
@@ -799,7 +867,7 @@ export function simulateTick(state: GameState): { state: GameState; events: Comb
 
     // Drop item
     if (zone) {
-      const hasGold = hasHerald(character.special, character.keystoneChoices, 'gold')
+      const hasGold = hasHerald(combat, 'gold')
       const unwavering = character.special.unwaveringDeclaration
       const dropModifiers = hasGold
         ? {
@@ -876,7 +944,12 @@ export function simulateTick(state: GameState): { state: GameState; events: Comb
     // Spawn next monster
     if (zone) {
       const nextMonster = createMonster(zone)
-      combat = { ...combat, monster: nextMonster, monsterLife: nextMonster.maxLife, virulent: { ...combat.virulent, patientZeroTarget: null } }
+      const nextAilments: Record<string, AilmentInstance[]> = { ...combat.ailments }
+      // Plaguewind carryover: DOTs from the last killed monster infect the next one
+      if (combat.plaguewindCarryover.length > 0) {
+        nextAilments[nextMonster.id] = [...(nextAilments[nextMonster.id] ?? []), ...combat.plaguewindCarryover]
+      }
+      combat = { ...combat, monster: nextMonster, monsterLife: nextMonster.maxLife, virulent: { ...combat.virulent, patientZeroTarget: null }, ailments: nextAilments, plaguewindCarryover: [] }
       events.push(makeEvent({ type: 'monsterSpawned', monsterId: nextMonster.id, monsterType: nextMonster.name, level: nextMonster.level }))
       if (nextMonster.isBoss) {
         events.push(makeEvent({ type: 'bossSpawned', bossId: nextMonster.id }))

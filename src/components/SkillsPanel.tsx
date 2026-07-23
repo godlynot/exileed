@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useGameStore } from '../store/gameStore.ts'
 import { SKILLS } from '../data/skills.ts'
 import { SUPPORTS } from '../data/supports.ts'
+import { gemXpForNextLevel } from '../systems/gems.ts'
 
 export function SkillsPanel() {
   const character = useGameStore(state => state.character)
@@ -42,6 +43,16 @@ export function SkillsPanel() {
                   <div className="text-xs text-gray-500">
                     {skill.baseDamageMin}–{skill.baseDamageMax} {skill.damageType} · {skill.cooldownTicks / 10}s
                   </div>
+                  {(() => {
+                    const gem = character.ownedGems.find(g => g.id === skill.id)
+                    if (!gem) return null
+                    const next = gemXpForNextLevel(gem.level)
+                    return (
+                      <div className="text-xs text-[#d4a017] mt-1">
+                        Lv {gem.level} · XP {gem.xp}/{next}
+                      </div>
+                    )
+                  })()}
                 </div>
               )}
               {skill && (
@@ -57,6 +68,11 @@ export function SkillsPanel() {
                         title={support?.name ?? 'Empty support slot'}
                       >
                         {support ? support.name.slice(0, 8) : '+'}
+                        {support && (() => {
+                          const gem = character.ownedGems.find(g => g.id === supportId)
+                          if (!gem) return null
+                          return <span className="block text-[8px] text-[#d4a017]">Lv{gem.level}</span>
+                        })()}
                       </button>
                     )
                   })}

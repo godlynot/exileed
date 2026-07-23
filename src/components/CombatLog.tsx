@@ -43,6 +43,20 @@ function formatEvent(event: CombatEvent): { text: string; color: string } {
       return { text: `Item dropped: ${event.rarity}`, color: 'text-[#d4a017]' }
     case 'zoneProgress':
       return { text: `Zone progress: ${event.current.toFixed(1)}%`, color: 'text-gray-400' }
+    case 'ailmentApplied':
+      return { text: `Applied ${event.ailmentType} to ${event.targetId}`, color: 'text-green-400' }
+    case 'ailmentExpired':
+      return { text: `${event.ailmentType} expired on ${event.targetId}`, color: 'text-gray-500' }
+    case 'dotTick':
+      return { text: `${event.ailmentType} ticked for ${event.damage}`, color: 'text-orange-400' }
+    case 'momentumChanged':
+      return { text: `Momentum: ${event.stacks} stacks`, color: 'text-cyan-400' }
+    case 'auraApplied':
+      return { text: `Aura applied: ${event.auraId}`, color: 'text-purple-400' }
+    case 'delayedDamageTick':
+      return { text: `Delayed damage ticks for ${event.damage}`, color: 'text-orange-300' }
+    case 'gemLeveledUp':
+      return { text: `Gem leveled up: ${event.gemName} is now level ${event.newLevel}`, color: 'text-green-400' }
     default:
       return { text: 'Unknown event', color: 'text-gray-400' }
   }

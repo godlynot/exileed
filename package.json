@@ -6,7 +6,9 @@
   "scripts": {
     "dev": "vite --host 0.0.0.0",
     "build": "tsc -b && vite build",
-    "preview": "vite preview --host 0.0.0.0"
+    "preview": "vite preview --host 0.0.0.0",
+    "validate:tree": "bun scripts/validateTree.ts",
+    "validate:ascendancies": "bun scripts/validateAscendancies.ts"
   },
   "dependencies": {
     "autoprefixer": "^10.5.4",

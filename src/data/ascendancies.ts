@@ -103,6 +103,7 @@ const virulentNodes: AscendancyNode[] = [
 
 // Warlord — Vanguard
 const vanguardNodes: AscendancyNode[] = [
+  { id: 'van_momentum', name: 'Momentum', description: 'Gain access to Momentum: a stacking combat resource that grants damage, action speed, and damage reduction.', x: 150, y: 340, type: 'small', free: true, stats: [{ stat: 'special:momentum', mode: 'special', value: 1 }] },
   small('van_s1', 'Advance', 150, 300, [{ stat: 'flat_strength', mode: 'flat', value: 10 }]),
   small('van_s2', 'Charge', 250, 260, [{ stat: 'inc_phys_damage_percent', mode: 'increased', value: 10 }]),
   small('van_s3', 'Fury', 250, 180, [{ stat: 'inc_attack_speed_percent', mode: 'increased', value: 8 }]),
@@ -119,6 +120,7 @@ const vanguardNodes: AscendancyNode[] = [
 
 // Warlord — Marshal
 const marshalNodes: AscendancyNode[] = [
+  { id: 'marsh_momentum', name: 'Momentum', description: 'Gain access to Momentum: a stacking combat resource that grants damage, action speed, and damage reduction.', x: 150, y: 340, type: 'small', free: true, stats: [{ stat: 'special:momentum', mode: 'special', value: 1 }] },
   small('marsh_s1', 'Rally', 150, 300, [{ stat: 'flat_strength', mode: 'flat', value: 10 }]),
   small('marsh_s2', 'Standard', 250, 260, [{ stat: 'inc_armour_percent', mode: 'increased', value: 10 }]),
   small('marsh_s3', 'Shieldwall', 250, 180, [{ stat: 'flat_life', mode: 'flat', value: 15 }]),
@@ -157,7 +159,9 @@ connectEntry(heraldNodes, 'herald_s1', ['herald_s2', 'herald_s6', 'herald_s7'])
 connectEntry(contagionNodes, 'cont_s1', ['cont_s2', 'cont_s6', 'cont_s7'])
 connectEntry(virulentNodes, 'vir_s1', ['vir_s2', 'vir_s6', 'vir_s7'])
 connectEntry(vanguardNodes, 'van_s1', ['van_s2', 'van_s6', 'van_s7'])
+vanguardNodes.find(n => n.id === 'van_momentum')!.requires = ['van_s1']
 connectEntry(marshalNodes, 'marsh_s1', ['marsh_s2', 'marsh_s6', 'marsh_s7'])
+marshalNodes.find(n => n.id === 'marsh_momentum')!.requires = ['marsh_s1']
 
 // Wire small paths to keystones
 fateseerNodes.find(n => n.id === 'fate_s2')!.requires = ['fate_s1']

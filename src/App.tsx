@@ -267,7 +267,7 @@ function App() {
 
         {/* Right: Character Stats */}
         <section className="lg:col-span-3">
-          <CharacterStats character={character} />
+          <CharacterStats character={character} combat={combat} />
         </section>
       </main>
     </div>

@@ -292,6 +292,7 @@ export function applyAscendancyStats(character: Character): Character {
           case 'special:bannermans_resolve': special.bannermansResolve = (character.keystoneChoices[nodeId] ?? 'iron_legion') as PassiveSpecialEffects['bannermansResolve']; break
           case 'special:bulwarks_wrath': special.bulwarksWrath = true; break
           case 'special:war_of_attrition': special.warOfAttrition = true; break
+          case 'special:momentum': special.momentum = true; break
         }
       }
     }
@@ -306,36 +307,42 @@ export function applyAscendancyStats(character: Character): Character {
   const lifeMult = (1 + (increased['inc_life_percent'] ?? 0) / 100)
   const esMult = (1 + (increased['inc_es_percent'] ?? 0) / 100)
 
-  // Marshal army choice: apply party-set stat bonuses
+  // Marshal army choice: party-set buffs (currently the party is just the player).
+  // These feed into the same flat/increased pipeline as other ascendancy stats.
   if (special.bannermansResolve) {
     const army = special.bannermansResolve
-    if (army === 'iron_legion') {
-      flat['flat_armour'] = (flat['flat_armour'] ?? 0) + character.level * 2
-      character.armour += Math.max(0, character.level * 2)
-    } else if (army === 'skirmishers') {
-      increased['inc_attack_speed_percent'] = (increased['inc_attack_speed_percent'] ?? 0) + 10
-      increased['inc_evasion_percent'] = (increased['inc_evasion_percent'] ?? 0) + 10
-    } else if (army === 'zealots') {
-      increased['inc_phys_damage_percent'] = (increased['inc_phys_damage_percent'] ?? 0) + 15
-    } else if (army === 'wardens') {
-      flat['flat_life'] = (flat['flat_life'] ?? 0) + character.level * 2
-    } else if (army === 'reapers') {
-      // Reapers apply a minor DOT to enemies handled in combat
+    switch (army) {
+      case 'iron_legion':
+        flat['flat_armour'] = (flat['flat_armour'] ?? 0) + character.level * 2
+        break
+      case 'skirmishers':
+        increased['inc_attack_speed_percent'] = (increased['inc_attack_speed_percent'] ?? 0) + 10
+        increased['inc_evasion_percent'] = (increased['inc_evasion_percent'] ?? 0) + 10
+        break
+      case 'zealots':
+        increased['inc_phys_damage_percent'] = (increased['inc_phys_damage_percent'] ?? 0) + 15
+        break
+      case 'wardens':
+        flat['flat_life'] = (flat['flat_life'] ?? 0) + character.level * 2
+        break
+      case 'reapers':
+        // Reapers apply a minor DOT to enemies; handled in combat.ts
+        break
     }
   }
 
   return {
     ...character,
     attributes,
-    maxLife: Math.max(1, character.maxLife + (flat['flat_life'] ?? 0) * lifeMult),
-    maxEnergyShield: Math.max(0, character.maxEnergyShield + (flat['flat_energy_shield'] ?? 0) * esMult),
-    accuracy: Math.max(0, character.accuracy + (flat['flat_accuracy'] ?? 0) * (1 + (increased['inc_accuracy_percent'] ?? 0) / 100)),
-    evasion: Math.max(0, character.evasion + (flat['flat_evasion'] ?? 0) * (1 + (increased['inc_evasion_percent'] ?? 0) / 100)),
-    armour: Math.max(0, character.armour + (flat['flat_armour'] ?? 0) * (1 + (increased['inc_armour_percent'] ?? 0) / 100)),
+    maxLife: Math.max(1, (character.maxLife + (flat['flat_life'] ?? 0)) * lifeMult),
+    maxEnergyShield: Math.max(0, (character.maxEnergyShield + (flat['flat_energy_shield'] ?? 0)) * esMult),
+    accuracy: Math.max(0, (character.accuracy + (flat['flat_accuracy'] ?? 0)) * (1 + (increased['inc_accuracy_percent'] ?? 0) / 100)),
+    evasion: Math.max(0, (character.evasion + (flat['flat_evasion'] ?? 0)) * (1 + (increased['inc_evasion_percent'] ?? 0) / 100)),
+    armour: Math.max(0, (character.armour + (flat['flat_armour'] ?? 0)) * (1 + (increased['inc_armour_percent'] ?? 0) / 100)),
     attackRate: character.attackRate * (1 + (increased['inc_attack_speed_percent'] ?? 0) / 100),
-    basePhysicalDamageMin: Math.floor(character.basePhysicalDamageMin * (1 + (increased['inc_phys_damage_percent'] ?? 0) / 100) * (1 + (more['inc_phys_damage_percent'] ?? 0) / 100)),
-    basePhysicalDamageMax: Math.floor(character.basePhysicalDamageMax * (1 + (increased['inc_phys_damage_percent'] ?? 0) / 100) * (1 + (more['inc_phys_damage_percent'] ?? 0) / 100)),
-    criticalChance: Math.min(1, character.criticalChance + ((increased['inc_crit_chance_percent'] ?? 0) / 100)),
+    basePhysicalDamageMin: Math.floor((character.basePhysicalDamageMin + (flat['flat_phys_damage'] ?? 0)) * (1 + (increased['inc_phys_damage_percent'] ?? 0) / 100) * (1 + (more['inc_phys_damage_percent'] ?? 0) / 100)),
+    basePhysicalDamageMax: Math.floor((character.basePhysicalDamageMax + (flat['flat_phys_damage'] ?? 0)) * (1 + (increased['inc_phys_damage_percent'] ?? 0) / 100) * (1 + (more['inc_phys_damage_percent'] ?? 0) / 100)),
+    criticalChance: special.crescendo ? 0 : Math.min(1, character.criticalChance + ((increased['inc_crit_chance_percent'] ?? 0) / 100)),
     criticalMultiplier: character.criticalMultiplier + ((increased['inc_crit_multi_percent'] ?? 0) / 100),
     special,
   }

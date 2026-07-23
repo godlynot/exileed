@@ -2,6 +2,7 @@ import { useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import type { Character, CombatEvent, CombatState, Monster } from '../types/game.ts'
 import { Heart, Shield, Sword, Skull } from 'lucide-react'
+import { CombatEffects } from './CombatEffects.tsx'
 
 interface CombatSceneProps {
   character: Character
@@ -180,6 +181,9 @@ export function CombatScene({ character, combat }: CombatSceneProps) {
         </div>
       </div>
     </div>
+
+    {/* Buff / Debuff bars */}
+    <CombatEffects character={character} combat={combat} />
 
     {/* Scrolling combat events */}
     <div className="bg-[#0b0c10] border border-[#2e303a] rounded-lg p-2 h-32 overflow-hidden">
