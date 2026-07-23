@@ -226,4 +226,23 @@ Avoid all Path of Exile trademarked terms.
 
 ---
 
-*Last updated: 2026-07-23 (Acts 2–3 campaign implemented; Cinder Marches and Fulgurite Spires zones, monsters, and bosses added)*
+## 9. Deferred / Accepted Issues
+
+### Armour mitigation drift (accepted for now)
+
+**Current status:** Accepted as a known balance quirk; revisit after Acts 4–5 are built.
+
+**What it is:** After wiring gear to scale per zone with the front-loaded act curve (`monsterScalingMultiplier`), the `validate:balance` script reports armour mitigation rising from ~28% at level 1 to ~52% at level 23 (Spire Crown).
+
+**Why it happens:** Both player armour and monster damage now scale with the same act curve, but the ratio between gear armour values and monster base damage values is not constant across tiers. Armour affix tier magnitudes outpace monster base damage as levels rise, so mitigation creeps upward.
+
+**Why it was accepted:** Hits-to-die is in/near the target band (10.7–27.2), TTK drift is excellent (1.48×), and the game feels better with gear upgrades mattering. Fixing the drift now could over-nerf armour before later acts exist to test against.
+
+**Possible fixes when revisited:**
+1. Reduce the armour-scaling exponent in `recalculateCharacterFromEquipment` (e.g. `bonus.armour * levelMultiplier^0.75` instead of the full curve).
+2. Lower the high-tier `armour_rating` affix magnitudes in `src/data/affixes.ts`.
+3. Slightly raise the denominator in the mitigation formula (`ARMOUR_MITIGATION_DENOMINATOR`) to lower mitigation globally.
+
+---
+
+*Last updated: 2026-07-23 (gear now scales per zone/act; mitigation drift documented as accepted)*

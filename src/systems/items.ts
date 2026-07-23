@@ -3,7 +3,7 @@ import type { Attributes, Character, ClassId } from '../types/game.ts'
 import { BASE_ITEMS } from '../data/items.ts'
 import { ALL_AFFIXES } from '../data/affixes.ts'
 import { CLASSES } from '../data/classes.ts'
-import { CHARACTER, DAMAGE, RECOVERY } from '../data/balance.ts'
+import { CHARACTER, DAMAGE, RECOVERY, monsterScalingMultiplier } from '../data/balance.ts'
 
 let itemIdCounter = 0
 
@@ -21,19 +21,59 @@ export function getAvailableTier(def: AffixDefinition, itemLevel: number): numbe
   return null
 }
 
+function getTierWindow(def: AffixDefinition, itemLevel: number): { lower: number; upper: number } {
+  let lower = 0
+  for (let i = def.tiers.length - 1; i >= 0; i--) {
+    if (itemLevel >= def.tiers[i].level) {
+      lower = i
+      break
+    }
+  }
+  return { lower, upper: Math.min(lower + 1, def.tiers.length - 1) }
+}
+
 export function rollAffixValue(def: AffixDefinition, itemLevel: number): Affix | null {
-  const tierIndex = getAvailableTier(def, itemLevel)
-  if (tierIndex === null) return null
-  const tier = def.tiers[tierIndex]
-  const value = Math.floor(Math.random() * (tier.max - tier.min + 1)) + tier.min
+  if (def.tiers.length === 0) return null
+
+  const { lower: lowerIndex, upper: upperIndex } = getTierWindow(def, itemLevel)
+  const lower = def.tiers[lowerIndex]
+  const upper = def.tiers[upperIndex]
+
+  // If we're at the top tier, roll within it directly.
+  if (lowerIndex === upperIndex) {
+    const value = Math.floor(Math.random() * (upper.max - upper.min + 1)) + upper.min
+    return {
+      id: `${def.id}_t${upperIndex + 1}`,
+      type: def.type,
+      name: def.name,
+      tier: upperIndex + 1,
+      stat: def.stat,
+      minValue: upper.min,
+      maxValue: upper.max,
+      value,
+    }
+  }
+
+  // Normalized progress through the tier window, eased so values accelerate as
+  // they approach the next act breakpoint (bigger per-act jumps).
+  let progress = 0
+  if (upper.level > lower.level) {
+    progress = (itemLevel - lower.level) / (upper.level - lower.level)
+  }
+  progress = Math.pow(progress, 0.7)
+
+  const min = Math.floor(lower.min + (upper.min - lower.min) * progress)
+  const max = Math.floor(lower.max + (upper.max - lower.max) * progress)
+  const value = Math.floor(Math.random() * (max - min + 1)) + min
+
   return {
-    id: `${def.id}_t${tierIndex + 1}`,
+    id: `${def.id}_t${lowerIndex + 1}`,
     type: def.type,
     name: def.name,
-    tier: tierIndex + 1,
+    tier: lowerIndex + 1,
     stat: def.stat,
-    minValue: tier.min,
-    maxValue: tier.max,
+    minValue: min,
+    maxValue: max,
     value,
   }
 }
@@ -359,6 +399,9 @@ export function calculateEquipmentBonus(equipment: Equipment): EquipmentBonus {
 export function recalculateCharacterFromEquipment(character: Character, equipment: Equipment): Character {
   const gameClass = CLASSES[character.classId as ClassId]
   const bonus = calculateEquipmentBonus(equipment)
+  // Gear base stats scale with the same front-loaded act curve as monsters so
+  // player power keeps pace with monster scaling across the campaign.
+  const levelMultiplier = monsterScalingMultiplier(character.level)
 
   const attributes: Attributes = {
     strength: gameClass.baseAttributes.strength + bonus.attributes.strength,
@@ -368,10 +411,14 @@ export function recalculateCharacterFromEquipment(character: Character, equipmen
 
   const levelBonusLife = (character.level - 1) * 6
   const levelBonusES = (character.level - 1) * 6
-  const flatMaxLife = gameClass.baseLife + attributes.strength * CHARACTER.LIFE_PER_STRENGTH + bonus.life + levelBonusLife
+  // Gear base stats (life, ES, armour, evasion) scale with the same act curve as
+  // monsters so defensive layers stay relevant across the campaign.
+  const scaledBonusLife = bonus.life * levelMultiplier
+  const scaledBonusEnergyShield = bonus.energyShield * levelMultiplier
+  const flatMaxLife = gameClass.baseLife + attributes.strength * CHARACTER.LIFE_PER_STRENGTH + scaledBonusLife + levelBonusLife
   const maxLife = Math.floor(flatMaxLife * (1 + bonus.increasedMaxLifePercent / 100))
   const maxEnergyShield = Math.floor(
-    (gameClass.baseEnergyShield + attributes.intelligence * CHARACTER.ES_PER_INTELLIGENCE + bonus.energyShield + levelBonusES) *
+    (gameClass.baseEnergyShield + attributes.intelligence * CHARACTER.ES_PER_INTELLIGENCE + scaledBonusEnergyShield + levelBonusES) *
     (1 + bonus.increasedEsPercent / 100),
   )
 
@@ -391,15 +438,15 @@ export function recalculateCharacterFromEquipment(character: Character, equipmen
   const accuracy = (gameClass.baseAccuracy + character.level * 15 + attributes.dexterity * CHARACTER.ACCURACY_PER_DEXTERITY + bonus.accuracy) *
     (1 + bonus.increasedAccuracyPercent / 100)
 
-  const armour = Math.floor((bonus.armour) * (1 + bonus.increasedArmourPercent / 100))
-  const evasion = Math.floor((gameClass.baseEvasion + bonus.evasion) *
+  const armour = Math.floor((bonus.armour * levelMultiplier) * (1 + bonus.increasedArmourPercent / 100))
+  const evasion = Math.floor((gameClass.baseEvasion + bonus.evasion * levelMultiplier) *
     (1 + bonus.increasedEvasionPercent / 100 + increasedEvasion))
 
   const increasedAttackSpeed = bonus.attackRate // already in attacks/sec from affixes
   const attackRate = (weapon ? weapon.attackRate : 1.0) * (1 + increasedAttackSpeed)
 
-  // Base weapon damage scaled by level
-  const levelMultiplier = 1 + (character.level - 1) * 0.01
+  // Base weapon damage scaled by the same front-loaded act curve as monsters so
+  // player DPS keeps pace with monster life across the campaign.
   const basePhysicalDamageMin = Math.floor((baseWeaponMin + bonus.physicalDamageMin) * levelMultiplier)
   const basePhysicalDamageMax = Math.floor((baseWeaponMax + bonus.physicalDamageMax) * levelMultiplier)
 
