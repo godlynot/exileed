@@ -96,13 +96,15 @@ The user explicitly rejected cutting load-bearing systems. The following reduce 
 
 ### M4 — Campaign & Combat Depth ✅
 - [x] Shattered Coast zone with 8+ monster types
+- [x] Acts 2–3 campaign zones added (Cinder Marches, Fulgurite Spires)
+- [x] Zone-level monster scaling via `createMonster` (`monsterLife`/`monsterDamage`)
 - [x] Monster damage components (physical/cold/lightning/fire/chaos)
 - [x] Resistance system with caps
 - [x] Armour mitigation and evasion formulas
 - [x] Energy Shield before Life
 - [x] Life regen and ES recharge delay
 - [x] Elite monsters with auras
-- [x] Boss phases (Storm-Wrecked Warden)
+- [x] Boss phases (Storm-Wrecked Warden, Cinder Throne Warden, Spire Crown)
 - [x] Combat event system
 - [x] Toggle-able combat log
 - [x] Floating combat text with scatter
@@ -173,9 +175,9 @@ Avoid all Path of Exile trademarked terms.
 | Refund passive point | **Orb of Penance** |
 
 ### Campaign Zones (8 Acts)
-1. The Shattered Coast ✅
-2. Desolate Wastes ✅
-3. Ruined Bastion ✅
+1. The Shattered Coast ✅ (levels 1–8)
+2. The Cinder Marches ✅ (levels 9–16, fire identity)
+3. Fulgurite Spires ✅ (levels 17–24, lightning identity)
 4. Crimson Swamps
 5. Frostbound Peaks
 6. Cursed Catacombs
@@ -224,4 +226,4 @@ Avoid all Path of Exile trademarked terms.
 
 ---
 
-*Last updated: 2026-07-23 (M4.5 gem XP/leveling, CombatEffects hover tooltips, delayed damage log entries, party-set self-buff limitation documented)*
+*Last updated: 2026-07-23 (Acts 2–3 campaign implemented; Cinder Marches and Fulgurite Spires zones, monsters, and bosses added)*

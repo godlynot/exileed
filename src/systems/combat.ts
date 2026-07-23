@@ -12,7 +12,7 @@ import type {
   Support,
   AilmentInstance,
 } from '../types/game.ts'
-import { DAMAGE, RECOVERY, TICKS_PER_SECOND, TICK_RATE } from '../data/balance.ts'
+import { DAMAGE, MONSTER, RECOVERY, TICKS_PER_SECOND, TICK_RATE, monsterScalingMultiplier } from '../data/balance.ts'
 import { applyDeathPenalty, addExperience } from './xp.ts'
 import { dropItem, recalculateCharacterFromEquipment } from './items.ts'
 import { applyPassiveStats, applyAscendancyStats } from './passives.ts'
@@ -94,6 +94,33 @@ export function createCombatState(monster: Monster): CombatState {
   }
 }
 
+function scaleMonster(monster: Monster, zone: Zone): Monster {
+  if (monster.level === zone.level) return monster
+
+  // Front-loaded act scaling: scale relative to the monster's natural level
+  // using the same curve the rest of the campaign uses.
+  const zoneMult = monsterScalingMultiplier(zone.level)
+  const monMult = monsterScalingMultiplier(monster.level)
+  const combatMult = zoneMult / monMult
+
+  const xpMult = Math.pow(MONSTER.XP_MULTIPLIER_PER_LEVEL, zone.level - monster.level)
+  const goldMult = Math.pow(MONSTER.GOLD_MULTIPLIER_PER_LEVEL, zone.level - monster.level)
+
+  return {
+    ...monster,
+    level: zone.level,
+    life: Math.floor(monster.maxLife * combatMult),
+    maxLife: Math.floor(monster.maxLife * combatMult),
+    damage: monster.damage.map(d => ({
+      ...d,
+      min: Math.max(1, Math.floor(d.min * combatMult)),
+      max: Math.max(1, Math.floor(d.max * combatMult)),
+    })),
+    experienceReward: Math.floor(monster.experienceReward * xpMult),
+    goldReward: Math.floor(monster.goldReward * goldMult),
+  }
+}
+
 function createMonster(zone: Zone): Monster {
   const pool = zone.monsterIds.length > 0 ? zone.monsterIds : zone.monsterId ? [zone.monsterId] : []
   const id = pool[Math.floor(Math.random() * pool.length)]
@@ -102,6 +129,7 @@ function createMonster(zone: Zone): Monster {
     throw new Error(`Unknown monster id: ${id}`)
   }
   let monster = { ...template, life: template.maxLife }
+  monster = scaleMonster(monster, zone)
 
   if (!monster.isBoss && !monster.isElite && Math.random() < zone.eliteChance) {
     monster = {
@@ -292,6 +320,14 @@ function skillDamage(
   const firstHit = isFirstHit(combat, monster.id)
   damage *= heraldDamageMultiplier(character, combat, monster, firstHit)
 
+  // Herald of Judgment: instantly execute enemies at or below 10% life
+  if (combat.herald.active.includes('judgment')) {
+    const healthPercent = combat.monsterLife / monster.maxLife
+    if (healthPercent <= 0.1) {
+      damage = Math.max(damage, combat.monsterLife)
+    }
+  }
+
   // Overrun: at max momentum, 20% of damage is unavoidable flat
   if (character.special.overrun && isMaxMomentum(combat.momentum, character)) {
     const flatPortion = damage * 0.2
@@ -449,7 +485,7 @@ export function simulateTick(state: GameState): { state: GameState; events: Comb
   combat = { ...combat, herald: { ...combat.herald, active: getHeraldActive(character.special, character.keystoneChoices) } }
   const activeHeralds = combat.herald.active
   if (combat.monster && combat.monsterLife > 0 && activeHeralds.includes('storms')) {
-    const stormPeriod = 5 * TICKS_PER_SECOND
+    const stormPeriod = 3 * TICKS_PER_SECOND
     if (state.tickCounter % stormPeriod < TICK_RATE) {
       const stormDamage = Math.floor(character.level * 3 + 10)
       const targetId = combat.monster.id
@@ -669,7 +705,7 @@ export function simulateTick(state: GameState): { state: GameState; events: Comb
       events.push(makeEvent({ type: 'hitAvoided', source: 'monster', targetId: character.id, reason: 'missed' }))
       combat = { ...combat, lastDamageTaken: 0 }
     } else {
-      const effectiveMonsterAccuracy = combat.monsterDebuffs.blind ? monster.accuracy * 0.5 : monster.accuracy
+      const effectiveMonsterAccuracy = combat.monsterDebuffs.blind ? monster.accuracy * 0.9 : monster.accuracy
       const monsterHit = character.special.alwaysHit ? true : Math.random() <= hitChance(effectiveMonsterAccuracy, character.evasion, combat.playerEvasionStacks)
     if (monsterHit) {
       let damageTaken = 0

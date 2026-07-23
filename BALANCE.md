@@ -121,6 +121,15 @@ The damage bonus is a **MORE** multiplier, so it multiplies all other damage sou
 
 Gems gain XP on every hit. XP is granted to the skill gem and all linked support gems when the skill lands a hit. Level-up events are emitted to the combat log.
 
+## Support Slot Milestones
+
+Support slot count grows with campaign completion, not trials:
+
+- **Start:** 2 support slots per skill
+- **Act 3 complete:** 3 support slots per skill
+- **Act 6 complete:** 4 support slots per skill
+- **Act 9 complete:** 5 support slots per skill (cap)
+
 ## Ascendancy Tuning
 
 ### Herald of Gold
@@ -143,3 +152,15 @@ These bonuses stack with the existing zone-level drop tables in `src/systems/ite
 - The campaign is planned for 8 acts.
 - Zone kill progress fills until 100%; the next zone unlocks.
 - Boss zones currently require a single kill.
+
+### Campaign Acts (Implemented)
+
+| Act | Name | Levels | Damage Identity | Lesson |
+|---|---|---|---|---|
+| 1 | The Shattered Coast | 1–8 | Physical / Cold | Introduce mitigation & resists |
+| 2 | The Cinder Marches | 9–16 | Fire | Cap fire resistance |
+| 3 | Fulgurite Spires | 17–24 | Lightning | Lightning resist + accuracy |
+
+### Monster Scaling in `createMonster`
+
+When a monster template is spawned in a zone, its stats are scaled from the template's natural level to the zone's level using the per-level multipliers above. This lets the same Act 1 trash template reappear in later Act 1 zones while remaining threatening.

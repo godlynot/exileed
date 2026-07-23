@@ -8,17 +8,16 @@
     "build": "tsc -b && vite build",
     "preview": "vite preview --host 0.0.0.0",
     "validate:tree": "bun scripts/validateTree.ts",
-    "validate:ascendancies": "bun scripts/validateAscendancies.ts"
+    "validate:ascendancies": "bun scripts/validateAscendancies.ts",
+    "validate:balance": "bun scripts/validateBalance.ts"
   },
   "dependencies": {
     "autoprefixer": "^10.5.4",
     "framer-motion": "^12.42.2",
-    "konva": "^10.3.0",
     "lucide-react": "^1.25.0",
     "postcss": "^8.5.20",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
-    "react-konva": "^19.2.5",
     "tailwindcss": "^4.3.3",
     "zustand": "^5.0.14"
   },

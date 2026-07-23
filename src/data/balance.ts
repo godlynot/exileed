@@ -45,22 +45,45 @@ export const RECOVERY = {
 } as const
 
 export const MONSTER = {
-  LIFE_MULTIPLIER_PER_LEVEL: 1.08,
-  DAMAGE_MULTIPLIER_PER_LEVEL: 1.06,
+  // XP/Gold still use a flat per-level curve (rewards are intentionally front-loaded
+  // by zone design rather than by this multiplier).
   XP_MULTIPLIER_PER_LEVEL: 1.05,
   GOLD_MULTIPLIER_PER_LEVEL: 1.05,
 } as const
+
+// Front-loaded per-act scaling curve (8 levels per act, as spec'd):
+// 1→2: ×3.2, 2→3: ×2.8, 3→4: ×2.4, 4→5: ×2.2, 5→6: ×2.0, 6→7: ×1.9, 7→8: ×1.8
+export const ACT_JUMPS = [3.2, 2.8, 2.4, 2.2, 2.0, 1.9, 1.8] as const
+
+export function monsterScalingMultiplier(level: number): number {
+  let mult = 1
+  let currentLevel = 1
+  let actIdx = 0
+  while (level > currentLevel) {
+    const nextActStart = currentLevel + 8
+    const jump = ACT_JUMPS[actIdx] ?? 1.8
+    if (level >= nextActStart) {
+      mult *= jump
+      currentLevel = nextActStart
+      actIdx++
+    } else {
+      mult *= Math.pow(jump, (level - currentLevel) / 8)
+      currentLevel = level
+    }
+  }
+  return mult
+}
 
 export function experienceForLevel(level: number): number {
   return Math.floor(EXPERIENCE.BASE_XP * Math.pow(level, EXPERIENCE.XP_EXPONENT))
 }
 
 export function monsterLife(level: number, base: number): number {
-  return Math.floor(base * Math.pow(MONSTER.LIFE_MULTIPLIER_PER_LEVEL, level - 1))
+  return Math.floor(base * monsterScalingMultiplier(level))
 }
 
 export function monsterDamage(level: number, base: number): number {
-  return Math.floor(base * Math.pow(MONSTER.DAMAGE_MULTIPLIER_PER_LEVEL, level - 1))
+  return Math.floor(base * monsterScalingMultiplier(level))
 }
 
 export function monsterExperience(level: number, base: number): number {

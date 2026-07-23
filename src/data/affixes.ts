@@ -43,13 +43,15 @@ export const PREFIXES: AffixDefinition[] = [
     { level: 48, min: 28, max: 45 },
     { level: 72, min: 45, max: 70 },
   ]),
-  // Armour prefixes
+  // Armour prefixes — flat armour must track monster damage scaling so that
+  // armour / (armour + 5 * hit) stays roughly constant across the campaign.
+  // Tier magnitudes follow the front-loaded act curve: ~×3.2 per act.
   makeAffix('armour_rating', 'prefix', 'armour', 'Reinforced', ['helmet', 'body', 'gloves', 'boots', 'belt'], [
     { level: 1, min: 5, max: 12 },
-    { level: 10, min: 12, max: 25 },
-    { level: 25, min: 25, max: 45 },
-    { level: 45, min: 45, max: 70 },
-    { level: 70, min: 70, max: 100 },
+    { level: 10, min: 18, max: 45 },
+    { level: 25, min: 110, max: 260 },
+    { level: 45, min: 650, max: 1500 },
+    { level: 70, min: 2000, max: 5000 },
   ]),
   // Attribute prefixes
   makeAffix('strength', 'prefix', 'strength', 'Mighty', ['helmet', 'body', 'gloves', 'boots', 'belt', 'amulet', 'ring'], [
