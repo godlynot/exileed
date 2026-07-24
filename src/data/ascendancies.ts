@@ -30,15 +30,18 @@ const fateseerNodes: AscendancyNode[] = [
 ]
 
 // Oracle — Herald
+// Wheel layout matches the reference crest: large wheel around (200, 170)
+// with "ORACLE Herald" in the center, the Proclaim a Herald keystone at the
+// top, six aura choices fanning above it, and small/keystone nodes around the rim.
 const heraldNodes: AscendancyNode[] = [
-  small('herald_s1', 'Devotion', 150, 300, [{ stat: 'flat_intelligence', mode: 'flat', value: 10 }]),
-  small('herald_s2', 'Fervor', 250, 260, [{ stat: 'inc_spell_damage_percent', mode: 'increased', value: 10 }]),
-  small('herald_s3', 'Standard', 250, 180, [{ stat: 'flat_energy_shield', mode: 'flat', value: 12 }]),
-  small('herald_s4', 'Conviction', 150, 140, [{ stat: 'inc_es_percent', mode: 'increased', value: 10 }]),
-  small('herald_s5', 'Division', 50, 180, [{ stat: 'inc_ele_damage_percent', mode: 'increased', value: 10 }]),
-  small('herald_s6', 'Communion', 50, 260, [{ stat: 'flat_life', mode: 'flat', value: 12 }]),
-  small('herald_s7', 'Litany', 150, 220, [{ stat: 'inc_crit_chance_percent', mode: 'increased', value: 10 }]),
-  keystone('herald_k1', 'Proclaim a Herald', 350, 220, 'Choose one of six standing auras.', {
+  small('herald_s1', 'Devotion', 120, 120, [{ stat: 'flat_intelligence', mode: 'flat', value: 10 }]),
+  small('herald_s2', 'Fervor', 280, 120, [{ stat: 'inc_spell_damage_percent', mode: 'increased', value: 10 }]),
+  small('herald_s3', 'Standard', 310, 160, [{ stat: 'flat_energy_shield', mode: 'flat', value: 12 }]),
+  small('herald_s4', 'Conviction', 110, 220, [{ stat: 'inc_es_percent', mode: 'increased', value: 10 }]),
+  small('herald_s5', 'Division', 300, 220, [{ stat: 'inc_ele_damage_percent', mode: 'increased', value: 10 }]),
+  small('herald_s6', 'Communion', 140, 290, [{ stat: 'flat_life', mode: 'flat', value: 12 }]),
+  small('herald_s7', 'Litany', 270, 290, [{ stat: 'inc_crit_chance_percent', mode: 'increased', value: 10 }]),
+  keystone('herald_k1', 'Proclaim a Herald', 200, 55, 'Choose one of six standing auras.', {
     requires: ['herald_s3'],
     choices: [
       { id: 'light', name: 'Herald of Light', description: 'Increased damage; blinded enemies cannot crit you and take increased damage.' },
@@ -50,8 +53,8 @@ const heraldNodes: AscendancyNode[] = [
     ],
     stats: [{ stat: 'special:proclaim_herald', mode: 'special', value: 1 }],
   }),
-  keystone('herald_k2', 'Unwavering Declaration', 350, 100, 'Your active Herald is significantly stronger and unlocks its unique special. You cannot switch Heralds without a respec.', { requires: ['herald_s3'], stats: [{ stat: 'special:unwavering_declaration', mode: 'special', value: 1 }], mutuallyExclusiveWith: ['herald_k3'] }),
-  keystone('herald_k3', 'Twin Heralds', 250, 100, 'Proclaim two Heralds at once, each at reduced effect. Specials are disabled.', {
+  keystone('herald_k2', 'Unwavering Declaration', 60, 170, 'Your active Herald is significantly stronger and unlocks its unique special. You cannot switch Heralds without a respec.', { requires: ['herald_s4'], stats: [{ stat: 'special:unwavering_declaration', mode: 'special', value: 1 }], mutuallyExclusiveWith: ['herald_k3'] }),
+  keystone('herald_k3', 'Twin Heralds', 340, 170, 'Proclaim two Heralds at once, each at reduced effect. Specials are disabled.', {
     requires: ['herald_s3'],
     choices: [
       { id: 'light', name: 'Herald of Light', description: 'Increased damage; blinded enemies cannot crit you and take increased damage.' },
@@ -65,8 +68,8 @@ const heraldNodes: AscendancyNode[] = [
     stats: [{ stat: 'special:twin_heralds', mode: 'special', value: 1 }],
     mutuallyExclusiveWith: ['herald_k2'],
   }),
-  keystone('herald_k4', 'Resonant Truth', 150, 20, 'A portion of damage you deal returns as energy shield while a Herald is active.', { requires: ['herald_s3'], stats: [{ stat: 'special:resonant_truth', mode: 'special', value: 1 }] }),
-  keystone('herald_k5', 'Foretold End', 50, 20, 'Your first hit against each enemy is empowered while a Herald is active.', { requires: ['herald_s5'], stats: [{ stat: 'special:foretold_end', mode: 'special', value: 1 }] }),
+  keystone('herald_k4', 'Resonant Truth', 150, 320, 'A portion of damage you deal returns as energy shield while a Herald is active.', { requires: ['herald_s6'], stats: [{ stat: 'special:resonant_truth', mode: 'special', value: 1 }] }),
+  keystone('herald_k5', 'Foretold End', 250, 320, 'Your first hit against each enemy is empowered while a Herald is active.', { requires: ['herald_s5'], stats: [{ stat: 'special:foretold_end', mode: 'special', value: 1 }] }),
 ]
 
 // Plaguebringer — Contagion
@@ -120,18 +123,18 @@ const vanguardNodes: AscendancyNode[] = [
 
 // Warlord — Marshal
 const marshalNodes: AscendancyNode[] = [
-  { id: 'marsh_momentum', name: 'Momentum', description: 'Gain access to Momentum: a stacking combat resource that grants damage, action speed, and damage reduction.', x: 150, y: 340, type: 'small', free: true, stats: [{ stat: 'special:momentum', mode: 'special', value: 1 }] },
-  small('marsh_s1', 'Rally', 150, 300, [{ stat: 'flat_strength', mode: 'flat', value: 10 }]),
-  small('marsh_s2', 'Standard', 250, 260, [{ stat: 'inc_armour_percent', mode: 'increased', value: 10 }]),
-  small('marsh_s3', 'Shieldwall', 250, 180, [{ stat: 'flat_life', mode: 'flat', value: 15 }]),
-  small('marsh_s4', 'Vengeance', 150, 140, [{ stat: 'inc_phys_damage_percent', mode: 'increased', value: 10 }]),
-  small('marsh_s5', 'Endure', 50, 180, [{ stat: 'flat_armour', mode: 'flat', value: 30 }]),
-  small('marsh_s6', 'Muster', 50, 260, [{ stat: 'inc_accuracy_percent', mode: 'increased', value: 10 }]),
-  small('marsh_s7', 'Colors', 150, 220, [{ stat: 'inc_life_percent', mode: 'increased', value: 8 }]),
-  keystone('marsh_k1', 'Rallying Presence', 350, 220, 'Each Momentum stack grants life regeneration and damage reduction.', { requires: ['marsh_s3'], stats: [{ stat: 'special:rallying_presence', mode: 'special', value: 1 }] }),
-  keystone('marsh_k2', 'Hold the Line', 350, 100, 'A portion of your armour also acts as flat damage resistance.', { requires: ['marsh_s3'], stats: [{ stat: 'special:hold_the_line', mode: 'special', value: 1 }] }),
-  keystone('marsh_k3', 'Bannerman\'s Resolve', 250, 20, 'Choose one of five armies to serve under your banner.', {
-    requires: ['marsh_s4'],
+  { id: 'marsh_momentum', name: 'Momentum', description: 'Gain access to Momentum: a stacking combat resource that grants damage, action speed, and damage reduction.', x: 200, y: 360, type: 'small', free: true, stats: [{ stat: 'special:momentum', mode: 'special', value: 1 }] },
+  small('marsh_s1', 'Rally', 200, 300, [{ stat: 'flat_strength', mode: 'flat', value: 10 }]),
+  small('marsh_s2', 'Standard', 200, 250, [{ stat: 'inc_armour_percent', mode: 'increased', value: 10 }]),
+  small('marsh_s3', 'Shieldwall', 120, 180, [{ stat: 'flat_life', mode: 'flat', value: 15 }]),
+  small('marsh_s4', 'Vengeance', 280, 180, [{ stat: 'inc_phys_damage_percent', mode: 'increased', value: 10 }]),
+  small('marsh_s5', 'Endure', 200, 130, [{ stat: 'flat_armour', mode: 'flat', value: 30 }]),
+  small('marsh_s6', 'Muster', 120, 70, [{ stat: 'inc_accuracy_percent', mode: 'increased', value: 10 }]),
+  small('marsh_s7', 'Colors', 280, 70, [{ stat: 'inc_life_percent', mode: 'increased', value: 8 }]),
+  keystone('marsh_k1', 'Rallying Presence', 200, 180, 'Each Momentum stack grants life regeneration and damage reduction.', { requires: ['marsh_s2'], stats: [{ stat: 'special:rallying_presence', mode: 'special', value: 1 }] }),
+  keystone('marsh_k2', 'Hold the Line', 60, 180, 'A portion of your armour also acts as flat damage resistance.', { requires: ['marsh_s3'], stats: [{ stat: 'special:hold_the_line', mode: 'special', value: 1 }] }),
+  keystone('marsh_k3', 'Bannerman\'s Resolve', 200, 10, 'Choose one of five armies to serve under your banner.', {
+    requires: ['marsh_k5'],
     choices: [
       { id: 'iron_legion', name: 'Iron Legion', description: 'Bonus armour and flat damage resistance.' },
       { id: 'skirmishers', name: 'Skirmishers', description: 'Bonus attack/move speed and evasion; Momentum builds faster.' },
@@ -141,8 +144,8 @@ const marshalNodes: AscendancyNode[] = [
     ],
     stats: [{ stat: 'special:bannermans_resolve', mode: 'special', value: 1 }],
   }),
-  keystone('marsh_k4', 'Bulwark\'s Wrath', 150, 20, 'Damage taken is added as flat physical damage to your hits for the next few seconds.', { requires: ['marsh_s4'], stats: [{ stat: 'special:bulwarks_wrath', mode: 'special', value: 1 }] }),
-  keystone('marsh_k5', 'War of Attrition', 50, 20, 'Aura: every second, applies a DOT to nearby enemies equal to a portion of your max life.', { requires: ['marsh_s5'], stats: [{ stat: 'special:war_of_attrition', mode: 'special', value: 1 }] }),
+  keystone('marsh_k4', 'Bulwark\'s Wrath', 340, 180, 'Damage taken is added as flat physical damage to your hits for the next few seconds.', { requires: ['marsh_s4'], stats: [{ stat: 'special:bulwarks_wrath', mode: 'special', value: 1 }] }),
+  keystone('marsh_k5', 'War of Attrition', 200, 70, 'Aura: every second, applies a DOT to nearby enemies equal to a portion of your max life.', { requires: ['marsh_s5'], stats: [{ stat: 'special:war_of_attrition', mode: 'special', value: 1 }] }),
 ]
 
 function connectEntry(nodes: AscendancyNode[], entryId: string, children: string[]) {
@@ -162,6 +165,33 @@ connectEntry(vanguardNodes, 'van_s1', ['van_s2', 'van_s6', 'van_s7'])
 vanguardNodes.find(n => n.id === 'van_momentum')!.requires = ['van_s1']
 connectEntry(marshalNodes, 'marsh_s1', ['marsh_s2', 'marsh_s6', 'marsh_s7'])
 marshalNodes.find(n => n.id === 'marsh_momentum')!.requires = ['marsh_s1']
+
+// Marshal uses a custom command-tree layout to match its reference art.
+function setMarshalPositions(nodes: AscendancyNode[]) {
+  const positions: Record<string, { x: number; y: number }> = {
+    'marsh_s1': { x: 200, y: 0 },         // Rally (top)
+    'marsh_s2': { x: 200, y: 50 },        // Standard
+    'marsh_k1': { x: 200, y: 100 },       // Rallying Presence
+    'marsh_s3': { x: 120, y: 100 },       // Shieldwall
+    'marsh_s4': { x: 280, y: 100 },       // Vengeance
+    'marsh_k2': { x: 50, y: 100 },        // Hold the Line
+    'marsh_k4': { x: 350, y: 100 },       // Bulwark's Wrath
+    'marsh_s5': { x: 200, y: 150 },       // Endure
+    'marsh_k5': { x: 200, y: 200 },       // War of Attrition
+    'marsh_s6': { x: 120, y: 200 },       // Muster
+    'marsh_s7': { x: 280, y: 200 },       // Colors
+    'marsh_k3': { x: 200, y: 250 },       // Bannerman's Resolve
+    'marsh_momentum': { x: 200, y: 370 },  // free starter (below fan)
+  }
+  for (const node of nodes) {
+    const pos = positions[node.id]
+    if (pos) {
+      node.x = pos.x
+      node.y = pos.y
+    }
+  }
+}
+setMarshalPositions(marshalNodes)
 
 // Wire small paths to keystones
 fateseerNodes.find(n => n.id === 'fate_s2')!.requires = ['fate_s1']
@@ -185,12 +215,17 @@ contagionNodes.find(n => n.id === 'cont_s5')!.requires = ['cont_s1']
 contagionNodes.find(n => n.id === 'cont_s6')!.requires = ['cont_s1']
 contagionNodes.find(n => n.id === 'cont_s7')!.requires = ['cont_s2', 'cont_s6']
 
-virulentNodes.find(n => n.id === 'vir_s2')!.requires = ['vir_s1']
-virulentNodes.find(n => n.id === 'vir_s3')!.requires = ['vir_s2']
-virulentNodes.find(n => n.id === 'vir_s4')!.requires = ['vir_s1']
-virulentNodes.find(n => n.id === 'vir_s5')!.requires = ['vir_s1']
-virulentNodes.find(n => n.id === 'vir_s6')!.requires = ['vir_s1']
-virulentNodes.find(n => n.id === 'vir_s7')!.requires = ['vir_s2', 'vir_s6']
+virulentNodes.find(n => n.id === 'vir_s2')!.requires = ['vir_s1']        // Sepsis <- Infest
+virulentNodes.find(n => n.id === 'vir_k1')!.requires = ['vir_s2']        // Septicemia <- Sepsis
+virulentNodes.find(n => n.id === 'vir_s4')!.requires = ['vir_k1']         // Wheeze <- Septicemia
+virulentNodes.find(n => n.id === 'vir_s5')!.requires = ['vir_k1']         // Bile <- Septicemia
+virulentNodes.find(n => n.id === 'vir_s3')!.requires = ['vir_k1']         // Palpitation <- Septicemia
+virulentNodes.find(n => n.id === 'vir_k2')!.requires = ['vir_s3']       // Cardiac Arrest <- Palpitation
+virulentNodes.find(n => n.id === 'vir_k3')!.requires = ['vir_s4']         // Asphyxiation <- Wheeze
+virulentNodes.find(n => n.id === 'vir_k4')!.requires = ['vir_s5']         // Cirrhosis <- Bile
+virulentNodes.find(n => n.id === 'vir_s6')!.requires = ['vir_k2']         // Ossify <- Cardiac Arrest
+virulentNodes.find(n => n.id === 'vir_s7')!.requires = ['vir_k3', 'vir_s6']         // Miasma <- Asphyxiation + Ossify
+virulentNodes.find(n => n.id === 'vir_k5')!.requires = ['vir_s6']         // Calcify <- Ossify
 
 vanguardNodes.find(n => n.id === 'van_s2')!.requires = ['van_s1']
 vanguardNodes.find(n => n.id === 'van_s3')!.requires = ['van_s2']
@@ -200,11 +235,113 @@ vanguardNodes.find(n => n.id === 'van_s6')!.requires = ['van_s1']
 vanguardNodes.find(n => n.id === 'van_s7')!.requires = ['van_s2', 'van_s6']
 
 marshalNodes.find(n => n.id === 'marsh_s2')!.requires = ['marsh_s1']
-marshalNodes.find(n => n.id === 'marsh_s3')!.requires = ['marsh_s2']
-marshalNodes.find(n => n.id === 'marsh_s4')!.requires = ['marsh_s1']
-marshalNodes.find(n => n.id === 'marsh_s5')!.requires = ['marsh_s1']
-marshalNodes.find(n => n.id === 'marsh_s6')!.requires = ['marsh_s1']
-marshalNodes.find(n => n.id === 'marsh_s7')!.requires = ['marsh_s2', 'marsh_s6']
+marshalNodes.find(n => n.id === 'marsh_k1')!.requires = ['marsh_s2']
+marshalNodes.find(n => n.id === 'marsh_s3')!.requires = ['marsh_k1']
+marshalNodes.find(n => n.id === 'marsh_s4')!.requires = ['marsh_k1']
+marshalNodes.find(n => n.id === 'marsh_k2')!.requires = ['marsh_s3']
+marshalNodes.find(n => n.id === 'marsh_k4')!.requires = ['marsh_s4']
+marshalNodes.find(n => n.id === 'marsh_s5')!.requires = ['marsh_k1']
+marshalNodes.find(n => n.id === 'marsh_k5')!.requires = ['marsh_s5']
+marshalNodes.find(n => n.id === 'marsh_s6')!.requires = ['marsh_k5']
+marshalNodes.find(n => n.id === 'marsh_s7')!.requires = ['marsh_k5']
+marshalNodes.find(n => n.id === 'marsh_k3')!.requires = ['marsh_s6', 'marsh_s7']
+
+// ---------------------------------------------------------------------------
+// Unified wheel layout for all ascendancies.
+// All non-Herald trees are arranged on the same 220-radius wheel geometry so
+// the renderer can draw a consistent ring and center title.
+// ---------------------------------------------------------------------------
+const WHEEL_LAYOUT: Record<string, { x: number; y: number }> = {
+  s1: { x: 120, y: 120 },
+  s2: { x: 280, y: 120 },
+  s3: { x: 310, y: 160 },
+  s4: { x: 110, y: 220 },
+  s5: { x: 300, y: 220 },
+  s6: { x: 140, y: 290 },
+  s7: { x: 270, y: 290 },
+  k1: { x: 200, y: 55 },
+  k2: { x: 60, y: 170 },
+  k3: { x: 340, y: 170 },
+  k4: { x: 150, y: 320 },
+  k5: { x: 250, y: 320 },
+}
+
+function applyWheelLayout(nodes: AscendancyNode[]) {
+  for (const node of nodes) {
+    const suffix = node.id.split('_').pop() ?? ''
+    const pos = WHEEL_LAYOUT[suffix]
+    if (pos) {
+      node.x = pos.x
+      node.y = pos.y
+    }
+  }
+}
+
+applyWheelLayout(fateseerNodes)
+applyWheelLayout(contagionNodes)
+applyWheelLayout(virulentNodes)
+applyWheelLayout(vanguardNodes)
+
+// Virulent uses a custom vertical spine layout to match its reference art.
+// The spine runs down the center of the wheel with keystones on the main
+// column and small nodes branching left/right.
+function setVirulentPositions(nodes: AscendancyNode[]) {
+  const positions: Record<string, { x: number; y: number }> = {
+    'vir_s1': { x: 200, y: -20 },  // Infest (top of spine)
+    'vir_s2': { x: 200, y: 60 },   // Sepsis
+    'vir_k1': { x: 200, y: 120 },  // Septicemia
+    'vir_s4': { x: 60, y: 120 },   // Wheeze (left branch)
+    'vir_s5': { x: 340, y: 120 },  // Bile (right branch)
+    'vir_s3': { x: 200, y: 180 },  // Palpitation
+    'vir_k2': { x: 200, y: 240 },  // Cardiac Arrest
+    'vir_k3': { x: 60, y: 240 },   // Asphyxiation (left branch)
+    'vir_k4': { x: 340, y: 240 },  // Cirrhosis (right branch)
+    'vir_s6': { x: 200, y: 300 },  // Ossify
+    'vir_s7': { x: 60, y: 300 },   // Miasma (left branch)
+    'vir_k5': { x: 200, y: 360 },  // Calcify (bottom of spine)
+  }
+  for (const node of nodes) {
+    const pos = positions[node.id]
+    if (pos) {
+      node.x = pos.x
+      node.y = pos.y
+    }
+  }
+}
+setVirulentPositions(virulentNodes)
+
+// Vanguard uses a custom spear/triangle layout to match its reference art.
+// All points are kept inside the 220-radius wheel centered at (200, 170).
+function setVanguardPositions(nodes: AscendancyNode[]) {
+  const positions: Record<string, { x: number; y: number }> = {
+    'van_k5': { x: 200, y: 55 },   // Blitz
+    'van_s7': { x: 200, y: 105 },  // Rout
+    'van_k2': { x: 200, y: 155 },  // Overrun
+    'van_s5': { x: 200, y: 200 },  // Press
+    'van_s6': { x: 200, y: 235 },  // Drive
+    'van_k1': { x: 200, y: 270 },  // Relentless Advance
+    'van_s3': { x: 120, y: 270 },  // Fury
+    'van_s4': { x: 280, y: 270 },  // Momentum
+    'van_k4': { x: 70, y: 270 },   // War Machine
+    'van_k3': { x: 330, y: 270 },  // Breakneck
+    'van_s2': { x: 200, y: 310 },  // Charge
+    'van_s1': { x: 200, y: 330 },  // Advance
+  }
+  for (const node of nodes) {
+    const pos = positions[node.id]
+    if (pos) {
+      node.x = pos.x
+      node.y = pos.y
+    }
+  }
+}
+setVanguardPositions(vanguardNodes)
+
+// Place the free "Momentum" starter node for Warlord trees below the center.
+const vanguardMomentum = vanguardNodes.find(n => n.id === 'van_momentum')
+if (vanguardMomentum) { vanguardMomentum.x = 200; vanguardMomentum.y = 350 }
+const marshalMomentum = marshalNodes.find(n => n.id === 'marsh_momentum')
+if (marshalMomentum) { marshalMomentum.x = 200; marshalMomentum.y = 370 }
 
 export const ASCENDANCIES: Record<string, Ascendancy> = {
   fateseer: {

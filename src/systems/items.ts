@@ -101,20 +101,23 @@ export function rollAffixes(slot: ItemSlot, itemLevel: number, count: number): A
 export function recalculateItem(item: Item): Item {
   const base = BASE_ITEMS[item.baseId]
   if (!base) return item
+  // Gear base stats scale with the same act curve as monsters so a level 90
+  // weapon/armour is meaningfully better than a level 1 weapon/armour.
+  const levelMultiplier = monsterScalingMultiplier(item.itemLevel)
 
   const recalculated: Item = {
     ...item,
-    physicalDamageMin: base.physicalDamageMin || 0,
-    physicalDamageMax: base.physicalDamageMax || 0,
+    physicalDamageMin: Math.floor((base.physicalDamageMin || 0) * levelMultiplier),
+    physicalDamageMax: Math.floor((base.physicalDamageMax || 0) * levelMultiplier),
     flatLightningDamageMin: 0,
     flatLightningDamageMax: 0,
     flatColdDamageMin: 0,
     flatColdDamageMax: 0,
     attackRate: base.attackRate || 0,
-    armour: base.armour || 0,
-    evasion: base.evasion || 0,
-    energyShield: base.energyShield || 0,
-    life: base.life || 0,
+    armour: Math.floor((base.armour || 0) * levelMultiplier),
+    evasion: Math.floor((base.evasion || 0) * levelMultiplier),
+    energyShield: Math.floor((base.energyShield || 0) * levelMultiplier),
+    life: Math.floor((base.life || 0) * levelMultiplier),
     chanceToBleed: 0,
     chanceToShock: 0,
     chanceToInflictDespair: 0,
@@ -399,9 +402,9 @@ export function calculateEquipmentBonus(equipment: Equipment): EquipmentBonus {
 export function recalculateCharacterFromEquipment(character: Character, equipment: Equipment): Character {
   const gameClass = CLASSES[character.classId as ClassId]
   const bonus = calculateEquipmentBonus(equipment)
-  // Gear base stats scale with the same front-loaded act curve as monsters so
-  // player power keeps pace with monster scaling across the campaign.
-  const levelMultiplier = monsterScalingMultiplier(character.level)
+  // Character base power scales gently with level. Gear power scales with item
+  // level via recalculateItem, so finding higher-level gear is what matters.
+  const characterLevelMult = 1 + (character.level - 1) * 0.05
 
   const attributes: Attributes = {
     strength: gameClass.baseAttributes.strength + bonus.attributes.strength,
@@ -411,14 +414,12 @@ export function recalculateCharacterFromEquipment(character: Character, equipmen
 
   const levelBonusLife = (character.level - 1) * 6
   const levelBonusES = (character.level - 1) * 6
-  // Gear base stats (life, ES, armour, evasion) scale with the same act curve as
-  // monsters so defensive layers stay relevant across the campaign.
-  const scaledBonusLife = bonus.life * levelMultiplier
-  const scaledBonusEnergyShield = bonus.energyShield * levelMultiplier
-  const flatMaxLife = gameClass.baseLife + attributes.strength * CHARACTER.LIFE_PER_STRENGTH + scaledBonusLife + levelBonusLife
+  // Gear life/ES values now scale with their own item level, so we no longer
+  // multiply them by the character-level monster curve.
+  const flatMaxLife = gameClass.baseLife + attributes.strength * CHARACTER.LIFE_PER_STRENGTH + bonus.life + levelBonusLife
   const maxLife = Math.floor(flatMaxLife * (1 + bonus.increasedMaxLifePercent / 100))
   const maxEnergyShield = Math.floor(
-    (gameClass.baseEnergyShield + attributes.intelligence * CHARACTER.ES_PER_INTELLIGENCE + scaledBonusEnergyShield + levelBonusES) *
+    (gameClass.baseEnergyShield + attributes.intelligence * CHARACTER.ES_PER_INTELLIGENCE + bonus.energyShield + levelBonusES) *
     (1 + bonus.increasedEsPercent / 100),
   )
 
@@ -438,17 +439,18 @@ export function recalculateCharacterFromEquipment(character: Character, equipmen
   const accuracy = (gameClass.baseAccuracy + character.level * 15 + attributes.dexterity * CHARACTER.ACCURACY_PER_DEXTERITY + bonus.accuracy) *
     (1 + bonus.increasedAccuracyPercent / 100)
 
-  const armour = Math.floor((bonus.armour * levelMultiplier) * (1 + bonus.increasedArmourPercent / 100))
-  const evasion = Math.floor((gameClass.baseEvasion + bonus.evasion * levelMultiplier) *
+  const armour = Math.floor(bonus.armour * (1 + bonus.increasedArmourPercent / 100))
+  const evasion = Math.floor((gameClass.baseEvasion + bonus.evasion) *
     (1 + bonus.increasedEvasionPercent / 100 + increasedEvasion))
 
   const increasedAttackSpeed = bonus.attackRate // already in attacks/sec from affixes
   const attackRate = (weapon ? weapon.attackRate : 1.0) * (1 + increasedAttackSpeed)
 
-  // Base weapon damage scaled by the same front-loaded act curve as monsters so
-  // player DPS keeps pace with monster life across the campaign.
-  const basePhysicalDamageMin = Math.floor((baseWeaponMin + bonus.physicalDamageMin) * levelMultiplier)
-  const basePhysicalDamageMax = Math.floor((baseWeaponMax + bonus.physicalDamageMax) * levelMultiplier)
+  // Weapon damage from gear scales with item level. Naked/starter-gear damage
+  // gets only a gentle per-level scaling so the character isn't helpless without
+  // upgrading equipment.
+  const basePhysicalDamageMin = Math.floor((baseWeaponMin + bonus.physicalDamageMin) * characterLevelMult)
+  const basePhysicalDamageMax = Math.floor((baseWeaponMax + bonus.physicalDamageMax) * characterLevelMult)
 
   // Recovery per tick (5 ticks per second)
   const ticksPerSecond = 5

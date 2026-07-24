@@ -1,5 +1,5 @@
 import type { Character, CombatState } from '../types/game.ts'
-import { DAMAGE } from '../data/balance.ts'
+import { DAMAGE, monsterScalingMultiplier } from '../data/balance.ts'
 import {
   momentumDamageMultiplier,
   momentumActionSpeed,
@@ -9,7 +9,9 @@ import {
 import { getActiveHeralds, getActiveBuffs } from '../systems/characterEffects.ts'
 
 function estimatedArmourMitigation(character: Character): number {
-  const sampleHitDamage = Math.max(10, character.level * 10)
+  // Sample hit damage follows the same act-curve scaling as monsters so the
+  // displayed mitigation reflects the actual hits the player is facing.
+  const sampleHitDamage = Math.max(10, character.level * 10 * monsterScalingMultiplier(character.level))
   return character.armour / (character.armour + DAMAGE.ARMOUR_MITIGATION_DENOMINATOR * sampleHitDamage)
 }
 

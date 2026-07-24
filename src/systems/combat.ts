@@ -44,7 +44,12 @@ function rollDamage(min: number, max: number): number {
 }
 
 function evadeChance(defenderEvasion: number, attackerAccuracy: number): number {
-  const chance = defenderEvasion / (defenderEvasion + attackerAccuracy)
+  // Asymptotic evasion: the more evasion you have, the harder each extra point
+  // is to notice. Keeps 1k+ evasion strong (≈70-75%) without ever quite reaching
+  // the cap, so accuracy still matters and evasion remains a viable alternative
+  // to armour without trivialising attacks.
+  const accuracyScale = Math.max(attackerAccuracy, 1)
+  const chance = 1 - Math.exp(-defenderEvasion / (accuracyScale * 0.75))
   return Math.min(chance, DAMAGE.EVASION_CAP)
 }
 

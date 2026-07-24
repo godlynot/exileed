@@ -70,7 +70,7 @@ export function AscendancyWheel({ ascendancy, allocatedNodes, availablePoints, o
   return (
     <div className="relative w-full max-w-2xl mx-auto">
       <div className="bg-[#0b0c10] border border-[#2e303a] rounded-xl p-4 shadow-inner">
-        <svg viewBox="0 0 400 340" className="w-full h-auto" style={{ maxHeight: 600 }}>
+        <svg viewBox="-80 -60 560 500" className="w-full h-auto" style={{ maxHeight: 600 }}>
           <defs>
             <filter id="asc-glow" x="-50%" y="-50%" width="200%" height="200%">
               <feGaussianBlur stdDeviation="4" result="coloredBlur" />
@@ -80,6 +80,99 @@ export function AscendancyWheel({ ascendancy, allocatedNodes, availablePoints, o
               </feMerge>
             </filter>
           </defs>
+
+          {/* Wheel ring + center title */}
+          <circle cx={200} cy={170} r={220} fill="none" stroke={palette.stroke} strokeWidth={2} opacity={0.25} />
+          <circle cx={200} cy={170} r={48} fill="#15161d" stroke={palette.stroke} strokeWidth={2} opacity={0.4} />
+          <text x={200} y={164} textAnchor="middle" fill={palette.stroke} fontSize={ascendancy.classId.length > 7 ? 8 : 10} fontWeight={700} opacity={0.9} letterSpacing={ascendancy.classId.length > 7 ? 1 : 2}>
+            {ascendancy.classId.toUpperCase()}
+          </text>
+          <text x={200} y={184} textAnchor="middle" fill="#ffffff" fontSize={16} fontWeight={700} opacity={0.95}>
+            {ascendancy.name}
+          </text>
+
+          {/* Marshal army-choice fan below Bannerman's Resolve */}
+          {ascendancy.id === 'marshal' && (() => {
+            const k3 = ascendancy.nodes.find(n => n.id === 'marsh_k3')
+            if (!k3 || !k3.choices) return null
+            const fan = [
+              { id: 'iron_legion', x: 70, y: 300 },
+              { id: 'skirmishers', x: 135, y: 325 },
+              { id: 'zealots', x: 200, y: 335 },
+              { id: 'wardens', x: 265, y: 325 },
+              { id: 'reapers', x: 330, y: 300 },
+            ]
+            return (
+              <g>
+                <text x={200} y={k3.y + 45} textAnchor="middle" fill={palette.stroke} fontSize={9} opacity={0.8}>
+                  — choose one army —
+                </text>
+                {fan.map(f => {
+                  const choice = k3.choices!.find(c => c.id === f.id)
+                  const selected = keystoneChoices[k3.id]?.split(',').includes(f.id)
+                  const label = choice?.name ?? f.id
+                  return (
+                    <g key={f.id}>
+                      <line x1={k3.x} y1={k3.y} x2={f.x} y2={f.y} stroke="#2e303a" strokeWidth={1} strokeDasharray="3 3" />
+                      <polygon
+                        points={hexagonPoints(f.x, f.y, 12)}
+                        fill={selected ? palette.stroke : '#0b0c10'}
+                        stroke={selected ? '#ffffff' : '#3e404a'}
+                        strokeWidth={selected ? 2 : 1}
+                      />
+                      <text x={f.x} y={f.y + 22} textAnchor="middle" fill={selected ? '#ffffff' : '#9ca3af'} fontSize={8} pointerEvents="none">
+                        {label}
+                      </text>
+                    </g>
+                  )
+                })}
+              </g>
+            )
+          })()}
+
+          {/* Herald aura choice fan above Proclaim a Herald */}
+          {ascendancy.id === 'herald' && (() => {
+            const k1 = ascendancy.nodes.find(n => n.id === 'herald_k1')
+            if (!k1 || !k1.choices) return null
+            const fan = [
+              { id: 'light', x: 75, y: 10 },
+              { id: 'gold', x: 125, y: -5 },
+              { id: 'tide', x: 175, y: -12 },
+              { id: 'silence', x: 225, y: -12 },
+              { id: 'storms', x: 275, y: -5 },
+              { id: 'judgment', x: 325, y: 10 },
+            ]
+            return (
+              <g>
+                <text x={200} y={-35} textAnchor="middle" fill={palette.stroke} fontSize={9} opacity={0.8}>
+                  — choose one Herald —
+                </text>
+                {fan.map(f => {
+                  const choice = k1.choices!.find(c => c.id === f.id)
+                  const selected = keystoneChoices[k1.id]?.split(',').includes(f.id)
+                  const label = choice?.name.replace('Herald of ', '') ?? f.id
+                  return (
+                    <g key={f.id}>
+                      <line x1={k1.x} y1={k1.y} x2={f.x} y2={f.y} stroke="#2e303a" strokeWidth={1} strokeDasharray="3 3" />
+                      <rect
+                        x={f.x - 10}
+                        y={f.y - 10}
+                        width={20}
+                        height={20}
+                        rx={2}
+                        fill={selected ? palette.stroke : '#0b0c10'}
+                        stroke={selected ? '#ffffff' : '#3e404a'}
+                        strokeWidth={selected ? 2 : 1}
+                      />
+                      <text x={f.x} y={f.y + 22} textAnchor="middle" fill={selected ? '#ffffff' : '#9ca3af'} fontSize={8} pointerEvents="none">
+                        {label}
+                      </text>
+                    </g>
+                  )
+                })}
+              </g>
+            )
+          })()}
 
           {/* Edges */}
           {edges.map((edge, idx) => (
@@ -138,6 +231,7 @@ export function AscendancyWheel({ ascendancy, allocatedNodes, availablePoints, o
                     ★
                   </text>
                 )}
+
               </g>
             )
           })}
@@ -241,3 +335,5 @@ function hexagonPoints(cx: number, cy: number, r: number): string {
   }
   return points.join(' ')
 }
+
+

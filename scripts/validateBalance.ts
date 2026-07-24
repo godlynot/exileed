@@ -40,14 +40,10 @@ const SLOT_BASES: Record<keyof Equipment, string> = {
   ring2: 'iron_ring',
 }
 
-function gearRarityForLevel(level: number): 'normal' | "magic" | "rare" {
-  if (level <= 3) return 'normal'
-  if (level <= 9) return 'magic'
-  return 'rare'
-}
-
 function buildEquipment(level: number): Equipment {
-  const rarity = gearRarityForLevel(level)
+  // Gear rarity gives extra mods; item level controls tier magnitude.
+  // Use rare gear at all levels so the validator tests the real item system.
+  const rarity: 'rare' = 'rare'
   const equipment: Equipment = {
     weapon: null,
     offhand: null,

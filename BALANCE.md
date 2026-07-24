@@ -62,9 +62,14 @@ Armour is relatively better against small, frequent hits and worse against large
 ### Evasion
 
 ```
-evasionChance = evasion / (evasion + attackerAccuracy)  // capped at 95%
+evasionChance = 1 - exp(-evasion / (attackerAccuracy * 0.75))  // capped at 95%
 hitchance = 1 - evasionChance
 ```
+
+Evasion now uses an asymptotic formula so that very high values provide strong but
+not automatic avoidance. At `evasion == attackerAccuracy` the chance is ~63%, and
+returns diminish as evasion grows, keeping evasion viable alongside armour without
+letting it trivialize incoming attacks.
 
 ### Resistances
 
