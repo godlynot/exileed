@@ -138,8 +138,8 @@ export const MONSTERS: Record<string, Monster> = {
     id: 'shore_warden',
     name: 'Shore Warden Gorath',
     level: 7,
-    life: 3150,
-    maxLife: 3150,
+    life: 750,
+    maxLife: 750,
     damage: [
       { type: 'physical', min: 12, max: 19 },
       { type: 'cold', min: 5, max: 9 },
@@ -157,8 +157,8 @@ export const MONSTERS: Record<string, Monster> = {
     id: 'storm_wrecked_warden',
     name: 'Storm-Wrecked Warden',
     level: 1,
-    life: 450,
-    maxLife: 450,
+    life: 750,
+    maxLife: 750,
     damage: [
       { type: 'physical', min: 4, max: 8 },
       { type: 'cold', min: 2, max: 4 },
@@ -307,8 +307,8 @@ export const MONSTERS: Record<string, Monster> = {
     id: 'cinder_throne_warden',
     name: 'The Cinder Throne Warden',
     level: 15,
-    life: 1500,
-    maxLife: 1500,
+    life: 2400,
+    maxLife: 2400,
     damage: [
       { type: 'fire', min: 35, max: 65 },
       { type: 'physical', min: 15, max: 30 },
@@ -460,8 +460,8 @@ export const MONSTERS: Record<string, Monster> = {
     id: 'spire_crown',
     name: 'The Spire Crown',
     level: 23,
-    life: 3500,
-    maxLife: 3500,
+    life: 6725,
+    maxLife: 6725,
     damage: [
       { type: 'lightning', min: 30, max: 80 },
       { type: 'cold', min: 12, max: 40 },

@@ -503,6 +503,8 @@ export interface GameState {
   character: Character
   zones: Zone[]
   activeZoneId: string
+  // Tracks the zone the player was in before starting a trial, so they can return afterward
+  previousZoneId: string | null
   inventory: InventoryState
   equipment: Equipment
   currencies: Record<string, number>

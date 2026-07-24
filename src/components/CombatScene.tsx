@@ -41,6 +41,10 @@ function eventColor(event: CombatEvent) {
   return 'text-white'
 }
 
+function formatHp(n: number) {
+  return Math.max(0, Math.round(n)).toString()
+}
+
 function eventLabel(event: CombatEvent) {
   if (event.type === 'hitAvoided') return event.reason === 'evaded' ? 'Dodge' : 'Miss'
   if (event.type === 'monsterDied') return 'Kill!'
@@ -89,7 +93,7 @@ export function CombatScene({ character, combat }: CombatSceneProps) {
         <div className="flex flex-col items-center gap-2 w-32">
           <div className="w-full">
             <div className="flex justify-between text-xs text-gray-300 mb-1">
-              <span className="flex items-center gap-1"><Heart className="w-3 h-3 text-red-500" /> {character.life}/{character.maxLife}</span>
+              <span className="flex items-center gap-1"><Heart className="w-3 h-3 text-red-500" /> {formatHp(character.life)}/{formatHp(character.maxLife)}</span>
             </div>
             <div className="w-full h-2 bg-[#2e303a] rounded overflow-hidden">
               <motion.div
@@ -147,7 +151,7 @@ export function CombatScene({ character, combat }: CombatSceneProps) {
                 transition={{ duration: 0.1 }}
               />
             </div>
-            <div className="text-right text-xs text-gray-400 mt-1">{combat.monsterLife}/{monster.maxLife}</div>
+            <div className="text-right text-xs text-gray-400 mt-1">{formatHp(combat.monsterLife)}/{formatHp(monster.maxLife)}</div>
           </div>
 
           <motion.div
@@ -177,7 +181,7 @@ export function CombatScene({ character, combat }: CombatSceneProps) {
             {combat.lastDamageTaken > 0 ? `${combat.lastDamageTaken} dmg` : '—'}
           </span>
           <span className="text-gray-300">| Shield:</span>
-          <span className="text-blue-400 flex items-center gap-1"><Shield className="w-3 h-3" /> {character.energyShield}/{character.maxEnergyShield}</span>
+          <span className="text-blue-400 flex items-center gap-1"><Shield className="w-3 h-3" /> {formatHp(character.energyShield)}/{formatHp(character.maxEnergyShield)}</span>
         </div>
       </div>
     </div>

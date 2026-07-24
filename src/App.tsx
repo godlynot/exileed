@@ -1,7 +1,7 @@
 import { useGameStore } from './store/gameStore.ts'
 import { useGameLoop } from './hooks/useGameLoop.ts'
 import { Shield, Heart, Skull, MapPin, Save, RotateCcw, Package, ShieldCheck, Settings, Hammer, TreePine, Sparkles } from 'lucide-react'
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { InventoryPanel } from './components/InventoryPanel.tsx'
 import { ClassSelection } from './components/ClassSelection.tsx'
 import { EquipmentPanel } from './components/EquipmentPanel.tsx'
@@ -30,9 +30,12 @@ function App() {
   const zones = useGameStore(state => state.zones)
   const passiveTree = useGameStore(state => state.passiveTree)
   const activeZoneId = useGameStore(state => state.activeZoneId)
+  const previousZoneId = useGameStore(state => state.previousZoneId)
   const selectZone = useGameStore(state => state.selectZone)
+  const returnToPreviousZone = useGameStore(state => state.returnToPreviousZone)
   const exportSave = useGameStore(state => state.exportSave)
   const resetGame = useGameStore(state => state.resetGame)
+  const advanceToNextAct = useGameStore(state => state.advanceToNextAct)
 
   const [activeTab, setActiveTab] = useState<Tab>('inventory')
   const [saveString, setSaveString] = useState('')
@@ -48,6 +51,34 @@ function App() {
   const activeZone = zones.find(z => z.id === activeZoneId)
   const monster = combat.monster
 
+  const ACT_NAMES: Record<number, string> = {
+    1: 'The Shattered Coast',
+    2: 'The Cinder Marches',
+    3: 'Fulgurite Spires',
+  }
+
+  const groupedZones = useMemo(() => {
+    const map: Record<number, typeof zones> = {}
+    for (const zone of zones) {
+      ;(map[zone.act] ??= []).push(zone)
+    }
+    for (const act of Object.keys(map)) {
+      map[Number(act)].sort((a, b) => a.level - b.level)
+    }
+    return map
+  }, [zones])
+
+  const actNumbers = useMemo(
+    () => Object.keys(groupedZones).map(Number).sort((a, b) => a - b),
+    [groupedZones]
+  )
+
+  const activeAct = activeZone?.act ?? 1
+  const currentActZones = groupedZones[activeAct] ?? []
+  const currentActDone = currentActZones.length > 0 && currentActZones.every(z => z.killProgress >= 100)
+  const nextAct = activeAct + 1
+  const hasNextAct = actNumbers.includes(nextAct)
+
   const handleExport = () => {
     setSaveString(exportSave())
   }
@@ -59,7 +90,7 @@ function App() {
     { id: 'tree', label: 'Passives', icon: <TreePine className="w-4 h-4" /> },
     { id: 'ascendancy', label: 'Ascendancy', icon: <Sparkles className="w-4 h-4" /> },
     { id: 'skills', label: 'Skills', icon: <Sparkles className="w-4 h-4" /> },
-    { id: 'zone', label: 'Zone', icon: <MapPin className="w-4 h-4" /> },
+    { id: 'zone', label: 'Acts', icon: <MapPin className="w-4 h-4" /> },
     { id: 'settings', label: 'Settings', icon: <Settings className="w-4 h-4" /> },
   ]
 
@@ -145,6 +176,14 @@ function App() {
           {/* Trials */}
           <div className="pt-2 border-t border-[#2e303a] space-y-2">
             <h4 className="text-xs font-medium text-[#d4a017]">Trials</h4>
+            {activeTrial && previousZoneId && (
+              <button
+                onClick={returnToPreviousZone}
+                className="w-full px-3 py-2 bg-[#1f2028] hover:bg-[#2e303a] border border-gray-500 rounded text-xs text-gray-200"
+              >
+                ← Return to Zone
+              </button>
+            )}
             {TRIALS.map(trial => {
               const completed =
                 (trial.id === 'trial_of_ascension_1' && character.trial1Completed) ||
@@ -200,26 +239,48 @@ function App() {
             <div className="flex-1 overflow-y-auto scrollbar-thin">
               {activeTab === 'zone' && (
                 <div className="space-y-4">
-                  <h2 className="text-lg font-serif text-[#d4a017]">Zone</h2>
-                  <div className="space-y-2">
-                    {zones.map(zone => (
-                      <button
-                        key={zone.id}
-                        onClick={() => selectZone(zone.id)}
-                        disabled={!zone.unlocked}
-                        className={`w-full text-left px-3 py-2 rounded border text-sm flex items-center justify-between ${
-                          activeZoneId === zone.id
-                            ? 'border-[#d4a017] bg-[#2e2a1f]'
-                            : 'border-[#2e303a] bg-[#1f2028]'
-                        } ${!zone.unlocked ? 'opacity-50 cursor-not-allowed' : 'hover:bg-[#2e303a]'}`}
-                      >
-                        <span className="flex items-center gap-2">
-                          <MapPin className="w-4 h-4" />
-                          {zone.name}
-                        </span>
-                        <span className="text-xs text-gray-400">Lv.{zone.level}</span>
-                      </button>
-                    ))}
+                  <h2 className="text-lg font-serif text-[#d4a017]">Acts</h2>
+                  {currentActDone && hasNextAct && (
+                    <button
+                      onClick={advanceToNextAct}
+                      className="w-full px-3 py-2 bg-[#d4a017] hover:bg-[#b88a14] text-[#0b0c10] rounded text-sm font-medium flex items-center justify-center gap-2"
+                    >
+                      Go to Act {nextAct}
+                    </button>
+                  )}
+                  <div className="space-y-6">
+                    {actNumbers.map(act => {
+                      const actZones = groupedZones[act]
+                      const isActLocked = !actZones.some(z => z.unlocked)
+                      return (
+                        <div key={act} className="space-y-2">
+                          <div className="flex items-center justify-between">
+                            <h3 className="text-sm font-serif text-[#d4a017]">Act {act} — {ACT_NAMES[act] ?? 'Unknown'}</h3>
+                            {isActLocked && <span className="text-xs text-gray-500 italic">Locked</span>}
+                          </div>
+                          <div className="space-y-2">
+                            {actZones.map(zone => (
+                              <button
+                                key={zone.id}
+                                onClick={() => selectZone(zone.id)}
+                                disabled={!zone.unlocked}
+                                className={`w-full text-left px-3 py-2 rounded border text-sm flex items-center justify-between ${
+                                  activeZoneId === zone.id
+                                    ? 'border-[#d4a017] bg-[#2e2a1f]'
+                                    : 'border-[#2e303a] bg-[#1f2028]'
+                                } ${!zone.unlocked ? 'opacity-50 cursor-not-allowed' : 'hover:bg-[#2e303a]'}`}
+                              >
+                                <span className="flex items-center gap-2">
+                                  <MapPin className="w-4 h-4" />
+                                  {zone.name}
+                                </span>
+                                <span className="text-xs text-gray-400">Lv.{zone.level}</span>
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )
+                    })}
                   </div>
                   {activeZone && (
                     <div className="text-xs text-gray-400">

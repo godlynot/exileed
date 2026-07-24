@@ -198,6 +198,7 @@ export function createInitialState(classId: ClassId = 'warlord'): GameState {
     character: { ...character, life: character.maxLife, energyShield: character.maxEnergyShield },
     zones,
     activeZoneId,
+    previousZoneId: null,
     inventory: createInitialInventory(),
     equipment,
     currencies: createInitialCurrencies(),
@@ -233,6 +234,8 @@ interface GameActions {
   exportSave: () => string
   importSave: (data: string) => void
   resetGame: () => void
+  advanceToNextAct: () => void
+  returnToPreviousZone: () => void
   devSetLevel: (level: number) => void
   devSetStats: (stats: Partial<Character>) => void
 }
@@ -245,6 +248,7 @@ function getInitialState(): GameState {
       ...loaded,
       gamePhase: loaded.gamePhase ?? 'class-select',
       tickCounter: loaded.tickCounter ?? 0,
+      previousZoneId: loaded.previousZoneId ?? null,
     }
   }
   return createInitialState('warlord')
@@ -361,6 +365,21 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
 
   resetGame: () => {
     set({ ...createInitialState('warlord'), gamePhase: 'class-select' })
+  },
+
+  advanceToNextAct: () => {
+    set(state => {
+      const active = state.zones.find(z => z.id === state.activeZoneId)
+      if (!active) return state
+      const actZones = state.zones.filter(z => z.act === active.act)
+      if (!actZones.every(z => z.killProgress >= 100)) return state
+      const nextAct = active.act + 1
+      const nextZonesList = state.zones.filter(z => z.act === nextAct).sort((a, b) => a.level - b.level)
+      if (nextZonesList.length === 0) return state
+      const target = nextZonesList[0]
+      const zones = state.zones.map(z => (z.id === target.id ? { ...z, unlocked: true } : z))
+      return { ...state, activeZoneId: target.id, zones, combat: createInitialCombat(target) }
+    })
   },
 
   startGame: (classId: ClassId) => {
@@ -506,7 +525,22 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
         monsterDebuffs: {},
         plaguewindCarryover: [],
       }
-      return { ...state, activeTrial: trial, combat }
+      return { ...state, activeTrial: trial, previousZoneId: state.activeZoneId, combat }
+    })
+  },
+
+  returnToPreviousZone: () => {
+    set(state => {
+      if (!state.previousZoneId) return state
+      const zone = state.zones.find(z => z.id === state.previousZoneId)
+      if (!zone) return state
+      return {
+        ...state,
+        activeZoneId: zone.id,
+        previousZoneId: null,
+        activeTrial: null,
+        combat: createInitialCombat(zone),
+      }
     })
   },
 
