@@ -1,8 +1,10 @@
 import { useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import type { Character, CombatEvent, CombatState, Monster } from '../types/game.ts'
+import { MONSTER_MODIFIERS_BY_ID } from '../data/monsterModifiers.ts'
 import { Heart, Shield, Sword, Skull } from 'lucide-react'
 import { CombatEffects } from './CombatEffects.tsx'
+import { DeathSummaryPanel } from './DeathSummaryPanel.tsx'
 
 interface CombatSceneProps {
   character: Character
@@ -23,7 +25,7 @@ function classIcon(classId: string) {
 }
 
 function monsterEmoji(monster: Monster) {
-  if (monster.isBoss) return '👹'
+  if (monster.rarity === 'boss') return '👹'
   const name = monster.name.toLowerCase()
   if (name.includes('drown') || name.includes('coast')) return '💀'
   if (name.includes('hound') || name.includes('waste')) return '🐺'
@@ -43,6 +45,29 @@ function eventColor(event: CombatEvent) {
 
 function formatHp(n: number) {
   return Math.max(0, Math.round(n)).toString()
+}
+
+function rarityLabel(rarity: Monster['rarity']) {
+  switch (rarity) {
+    case 'magic': return 'Magic'
+    case 'rare': return 'Rare'
+    case 'boss': return 'Boss'
+    default: return 'Normal'
+  }
+}
+
+function rarityColor(rarity: Monster['rarity']) {
+  switch (rarity) {
+    case 'magic': return 'text-blue-400'
+    case 'rare': return 'text-yellow-400'
+    case 'boss': return 'text-purple-400'
+    default: return 'text-gray-400'
+  }
+}
+
+function modifierNames(monster: Monster) {
+  if (!monster.modifierIds || monster.modifierIds.length === 0) return []
+  return monster.modifierIds.map(id => MONSTER_MODIFIERS_BY_ID[id]?.displayName ?? id)
 }
 
 function eventLabel(event: CombatEvent) {
@@ -87,6 +112,9 @@ export function CombatScene({ character, combat }: CombatSceneProps) {
     <div className="relative w-full h-80 bg-[#0f1115] rounded-lg border border-[#2e303a] overflow-hidden">
       {/* Background atmosphere */}
       <div className="absolute inset-0 opacity-20 pointer-events-none bg-gradient-to-b from-red-900/20 to-transparent" />
+
+      {/* Death summary overlay */}
+      {!character.isAlive && combat.deathSummary && <DeathSummaryPanel combat={combat} />}
 
       <div className="relative z-10 flex items-center justify-between h-full px-12">
         {/* Player avatar */}
@@ -138,33 +166,59 @@ export function CombatScene({ character, combat }: CombatSceneProps) {
           <div className="text-xs text-gray-500">{combat.lastDamageDealt > 0 && <span className="text-green-400">-{combat.lastDamageDealt}</span>}</div>
         </div>
 
-        {/* Monster avatar */}
-        <div className="flex flex-col items-center gap-2 w-32">
-          <div className="w-full">
-            <div className="flex justify-between text-xs text-gray-300 mb-1">
-              <span>{monster.name}</span>
+        {/* Monster info card */}
+        <div className="flex flex-col items-center gap-2 w-36">
+          <div className="w-full bg-[#15161d]/80 border border-[#2e303a] rounded-xl p-3 space-y-2 shadow-lg">
+            {/* Avatar */}
+            <motion.div
+              key={lastMonsterEvent?.id ?? 'monster-idle'}
+              animate={lastMonsterEvent ? { x: [0, -20, 0], rotate: [0, 10, 0] } : {}}
+              transition={{ duration: 0.2 }}
+              className="text-6xl text-center drop-shadow-lg"
+            >
+              {monsterEmoji(monster)}
+            </motion.div>
+
+            {/* HP bar */}
+            <div>
+              <div className="flex justify-between text-xs text-gray-300 mb-1">
+                <span className="truncate">{monster.name}</span>
+              </div>
+              <div className="w-full h-2 bg-[#2e303a] rounded overflow-hidden">
+                <motion.div
+                  className="h-full bg-red-700"
+                  animate={{ width: `${monsterLifePercent}%` }}
+                  transition={{ duration: 0.1 }}
+                />
+              </div>
+              <div className="text-right text-xs text-gray-400 mt-1">
+                {formatHp(combat.monsterLife)}/{formatHp(monster.maxLife)}
+              </div>
             </div>
-            <div className="w-full h-2 bg-[#2e303a] rounded overflow-hidden">
-              <motion.div
-                className="h-full bg-red-700"
-                animate={{ width: `${monsterLifePercent}%` }}
-                transition={{ duration: 0.1 }}
-              />
+
+            {/* Name / level / rarity */}
+            <div className="text-center space-y-0.5">
+              <div className="text-sm font-medium text-gray-200">{monster.name}</div>
+              <div className="text-xs text-gray-400">Lv.{monster.level}</div>
+              <div className={`text-xs font-semibold uppercase tracking-wider ${rarityColor(monster.rarity)}`}>
+                {rarityLabel(monster.rarity)}
+              </div>
             </div>
-            <div className="text-right text-xs text-gray-400 mt-1">{formatHp(combat.monsterLife)}/{formatHp(monster.maxLife)}</div>
+
+            {/* Modifiers as pills */}
+            {modifierNames(monster).length > 0 && (
+              <div className="flex flex-wrap justify-center gap-1">
+                {modifierNames(monster).map((mod, idx) => (
+                  <span
+                    key={idx}
+                    className="text-[10px] px-2 py-0.5 rounded-full bg-[#2e303a]/80 text-gray-300 border border-[#3f414d]"
+                  >
+                    {mod}
+                  </span>
+                ))}
+              </div>
+            )}
           </div>
-
-          <motion.div
-            key={lastMonsterEvent?.id ?? 'monster-idle'}
-            animate={lastMonsterEvent ? { x: [0, -20, 0], rotate: [0, 10, 0] } : {}}
-            transition={{ duration: 0.2 }}
-            className="text-6xl drop-shadow-lg"
-          >
-            {monsterEmoji(monster)}
-          </motion.div>
-
-          <div className="text-sm font-medium text-gray-200">{monster.name}</div>
-          <div className="text-xs text-gray-400">Lv.{monster.level}</div>
         </div>
       </div>
 

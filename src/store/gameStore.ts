@@ -171,6 +171,8 @@ function createInitialCombat(zone: Zone): CombatState {
     virulent: { stacks: {}, septicemiaMultiplier: {}, calcifyAccumulator: {}, slow: {}, patientZeroTarget: null },
     monsterDebuffs: {},
     plaguewindCarryover: [],
+    damageTakenByType: { physical: 0, fire: 0, cold: 0, lightning: 0, chaos: 0 },
+    deathSummary: null,
   }
 }
 
@@ -524,6 +526,8 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
         virulent: { stacks: {}, septicemiaMultiplier: {}, calcifyAccumulator: {}, slow: {}, patientZeroTarget: null },
         monsterDebuffs: {},
         plaguewindCarryover: [],
+        damageTakenByType: { physical: 0, fire: 0, cold: 0, lightning: 0, chaos: 0 },
+        deathSummary: null,
       }
       return { ...state, activeTrial: trial, previousZoneId: state.activeZoneId, combat }
     })

@@ -1,7 +1,7 @@
 // All tuning constants live here so designers can tweak without touching logic.
 
-export const TICK_RATE = 200 // ms per tick (5 ticks/sec)
-export const TICKS_PER_SECOND = 5
+export const TICK_RATE = 400 // ms per tick (2.5 ticks/sec)
+export const TICKS_PER_SECOND = 2.5
 export const OFFLINE_PROGRESS_MAX_HOURS = 8
 export const OFFLINE_PROGRESS_CHUNK_HOURS = 1
 

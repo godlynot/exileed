@@ -1,7 +1,7 @@
 import { useGameStore } from './store/gameStore.ts'
 import { useGameLoop } from './hooks/useGameLoop.ts'
 import { Shield, Heart, Skull, MapPin, Save, RotateCcw, Package, ShieldCheck, Settings, Hammer, TreePine, Sparkles } from 'lucide-react'
-import { useState, useMemo, lazy, Suspense } from 'react'
+import { useState, useMemo } from 'react'
 import { InventoryPanel } from './components/InventoryPanel.tsx'
 import { ClassSelection } from './components/ClassSelection.tsx'
 import { CombatScene } from './components/CombatScene.tsx'
@@ -10,12 +10,11 @@ import { AscendancySelection } from './components/AscendancySelection.tsx'
 import { DevTools } from './components/DevTools.tsx'
 import { CharacterStats } from './components/CharacterStats.tsx'
 
-// Lazy-load non-default tabs to reduce initial bundle size
-const EquipmentPanel = lazy(() => import('./components/EquipmentPanel.tsx').then(m => ({ default: m.EquipmentPanel })))
-const CraftingPanel = lazy(() => import('./components/CraftingPanel.tsx').then(m => ({ default: m.CraftingPanel })))
-const PassiveTreePanel = lazy(() => import('./components/PassiveTreePanel.tsx').then(m => ({ default: m.PassiveTreePanel })))
-const AscendancyTree = lazy(() => import('./components/AscendancyTree.tsx').then(m => ({ default: m.AscendancyTree })))
-const SkillsPanel = lazy(() => import('./components/SkillsPanel.tsx').then(m => ({ default: m.SkillsPanel })))
+import { EquipmentPanel } from './components/EquipmentPanel.tsx'
+import { CraftingPanel } from './components/CraftingPanel.tsx'
+import { PassiveTreePanel } from './components/PassiveTreePanel.tsx'
+import { AscendancyTree } from './components/AscendancyTree.tsx'
+import { SkillsPanel } from './components/SkillsPanel.tsx'
 import { ASCENDANCIES, TRIALS } from './data/ascendancies.ts'
 
 type Tab = 'zone' | 'inventory' | 'equipment' | 'crafting' | 'tree' | 'ascendancy' | 'skills' | 'settings'
@@ -42,6 +41,22 @@ function App() {
   const [activeTab, setActiveTab] = useState<Tab>('inventory')
   const [saveString, setSaveString] = useState('')
 
+  const groupedZones = useMemo(() => {
+    const map: Record<number, typeof zones> = {}
+    for (const zone of zones) {
+      ;(map[zone.act] ??= []).push(zone)
+    }
+    for (const act of Object.keys(map)) {
+      map[Number(act)].sort((a, b) => a.level - b.level)
+    }
+    return map
+  }, [zones])
+
+  const actNumbers = useMemo(
+    () => Object.keys(groupedZones).map(Number).sort((a, b) => a - b),
+    [groupedZones]
+  )
+
   if (gamePhase === 'class-select') {
     return <ClassSelection />
   }
@@ -58,22 +73,6 @@ function App() {
     2: 'The Cinder Marches',
     3: 'Fulgurite Spires',
   }
-
-  const groupedZones = useMemo(() => {
-    const map: Record<number, typeof zones> = {}
-    for (const zone of zones) {
-      ;(map[zone.act] ??= []).push(zone)
-    }
-    for (const act of Object.keys(map)) {
-      map[Number(act)].sort((a, b) => a.level - b.level)
-    }
-    return map
-  }, [zones])
-
-  const actNumbers = useMemo(
-    () => Object.keys(groupedZones).map(Number).sort((a, b) => a - b),
-    [groupedZones]
-  )
 
   const activeAct = activeZone?.act ?? 1
   const currentActZones = groupedZones[activeAct] ?? []
@@ -214,7 +213,7 @@ function App() {
           <div className="text-center">
             <h3 className="text-xl font-serif text-gray-200">{monster ? monster.name : 'Resting'}</h3>
             <div className="text-sm text-gray-400">
-              {monster ? (monster.isBoss ? 'Boss' : `Level ${monster.level}`) : 'No enemy'}
+              {monster ? (monster.rarity === 'boss' ? 'Boss' : `Level ${monster.level}`) : 'No enemy'}
             </div>
           </div>
           <CombatScene character={character} combat={combat} />
@@ -239,7 +238,6 @@ function App() {
             </div>
 
             <div className="flex-1 overflow-y-auto scrollbar-thin">
-              <Suspense fallback={<div className="flex items-center justify-center h-48 text-[#d4a017] text-sm animate-pulse">Loading...</div>}>
               {activeTab === 'zone' && (
                 <div className="space-y-4">
                   <h2 className="text-lg font-serif text-[#d4a017]">Acts</h2>
@@ -325,7 +323,6 @@ function App() {
                   </button>
                 </div>
               )}
-              </Suspense>
             </div>
           </section>
         </section>

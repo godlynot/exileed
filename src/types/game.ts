@@ -162,6 +162,32 @@ export interface MonsterDamageComponent {
   max: number
 }
 
+export type MonsterRarity = 'normal' | 'magic' | 'rare' | 'boss'
+
+export type MonsterModifierCategory = 'offense' | 'defense' | 'utility' | 'onDeath'
+
+export interface MonsterModifier {
+  id: string
+  displayName: string
+  affixType: 'prefix' | 'suffix'
+  group: string
+  category: MonsterModifierCategory
+  weight: number
+  minAreaLevel: number
+  // Multiplicative stats (scale-invariant)
+  lifeMult?: number
+  damageMult?: number
+  attackRateMult?: number
+  // Additive stats (scale with zone level)
+  armourAdd?: number
+  evasionAdd?: number
+  accuracyAdd?: number
+  // Pack aura
+  aura?: {
+    nearbyAlliesDamagePercent: number
+  }
+}
+
 export interface Monster {
   id: string
   name: string
@@ -175,11 +201,13 @@ export interface Monster {
   armour?: number
   experienceReward: number
   goldReward: number
-  isBoss: boolean
-  isElite?: boolean
-  // Optional aura or mechanic that combat.ts can read generically
+  // Rarity is the single source of truth. Boss templates use 'boss'.
+  rarity: MonsterRarity
+  // Active modifiers rolled onto this instance (by id)
+  modifierIds?: string[]
+  // Derived aura from rolled modifiers (e.g. Warleader)
   aura?: {
-    nearbyAlliesDamagePercent?: number
+    nearbyAlliesDamagePercent: number
   }
   // Optional phase thresholds for bosses
   phases?: {
@@ -257,7 +285,7 @@ export interface VirulentState {
 }
 
 export type CombatEvent =
-  | { id: string; timestamp: number; type: 'monsterSpawned'; monsterId: string; monsterType: string; level: number }
+  | { id: string; timestamp: number; type: 'monsterSpawned'; monsterId: string; monsterType: string; level: number; rarity: MonsterRarity; modifierNames: string[] }
   | { id: string; timestamp: number; type: 'hitLanded'; source: 'player' | 'monster'; targetId: string; damage: number; damageType: DamageType; crit: boolean }
   | { id: string; timestamp: number; type: 'hitAvoided'; source: 'player' | 'monster'; targetId: string; reason: 'evaded' | 'missed' }
   | { id: string; timestamp: number; type: 'monsterDied'; monsterId: string; monsterType: string }
@@ -276,6 +304,14 @@ export type CombatEvent =
   | { id: string; timestamp: number; type: 'delayedDamageTick'; targetId: string; damage: number }
   | { id: string; timestamp: number; type: 'gemLeveledUp'; gemId: string; gemName: string; newLevel: number }
 
+export interface DeathSummary {
+  monsterName: string
+  monsterLevel: number
+  monsterRarity: MonsterRarity
+  monsterModifiers: string[]
+  damageTaken: Record<DamageType, number>
+}
+
 export interface CombatState {
   monster: Monster | null
   monsterLife: number
@@ -289,6 +325,9 @@ export interface CombatState {
   // Evasion streak stacks: each consecutive dodge builds a stack that makes the next attack more likely to hit
   playerEvasionStacks: number
   monsterEvasionStacks: number
+  // Death summary: populated when the player dies, cleared on respawn.
+  damageTakenByType: Record<DamageType, number>
+  deathSummary: DeathSummary | null
   // M4.5 state
   momentum: MomentumState
   herald: HeraldState

@@ -1,4 +1,6 @@
 import type { ReactNode } from 'react'
+import { useState } from 'react'
+import { motion, AnimatePresence } from 'framer-motion'
 import {
   Zap,
   Sun,
@@ -18,6 +20,7 @@ import {
   Users,
   Crosshair,
   Activity,
+  X,
 } from 'lucide-react'
 import type { Character, CombatState, AilmentInstance } from '../types/game.ts'
 import { getActiveHeralds, getActiveBuffs } from '../systems/characterEffects.ts'
@@ -259,21 +262,24 @@ function groupAilments(ailments: AilmentInstance[]) {
 }
 
 function EffectRow({ label, effects }: { label: string; effects: CombatEffectItem[] }) {
+  const [selected, setSelected] = useState<CombatEffectItem | null>(null)
+
   return (
     <div className="flex items-start gap-2">
       <div className="w-12 shrink-0 text-[10px] text-gray-500 uppercase tracking-wider pt-1.5">{label}</div>
       <div className="flex flex-wrap gap-1.5 flex-1">
         {effects.length === 0 && <span className="text-[10px] text-gray-600 italic pt-1.5">None</span>}
         {effects.map((effect) => (
-          <div
+          <button
             key={effect.id}
-            title={`${effect.label}: ${effect.desc}`}
+            type="button"
+            onClick={() => setSelected(effect)}
             className={[
               'relative flex items-center justify-center w-8 h-8 rounded border',
               'bg-gradient-to-br from-[#1a1c24] to-[#111318]',
               effect.bgColor,
               effect.borderColor,
-              'shadow-sm hover:brightness-110 hover:scale-105 transition-transform cursor-help',
+              'shadow-sm hover:brightness-110 hover:scale-105 transition-transform cursor-pointer',
             ].join(' ')}
           >
             {effect.icon}
@@ -287,9 +293,67 @@ function EffectRow({ label, effects }: { label: string; effects: CombatEffectIte
                 {effect.timer}
               </span>
             )}
-          </div>
+          </button>
         ))}
       </div>
+
+      <AnimatePresence>
+        {selected && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.15 }}
+            className="fixed inset-0 z-30 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm"
+            onClick={() => setSelected(null)}
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.92, y: 12 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.96, y: 8 }}
+              transition={{ duration: 0.2, ease: 'easeOut' }}
+              className="w-full max-w-sm bg-gradient-to-b from-[#1a1515] to-[#0f0c0c] border border-[#2e303a] rounded-xl p-5 shadow-[0_0_40px_-10px_rgba(220,38,38,0.25)]"
+              onClick={(e) => e.stopPropagation()}
+            >
+            <div className="flex items-start justify-between gap-3 mb-3">
+              <div className="flex items-center gap-3">
+                <div
+                  className={[
+                    'flex items-center justify-center w-10 h-10 rounded border',
+                    selected.bgColor,
+                    selected.borderColor,
+                  ].join(' ')}
+                >
+                  {selected.icon}
+                </div>
+                <div>
+                  <h4 className={`text-base font-semibold ${selected.textColor}`}>{selected.label}</h4>
+                  <span className="text-[10px] text-gray-500 uppercase tracking-wider">{label} Effect</span>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSelected(null)}
+                className="p-1 rounded-full hover:bg-white/10 text-gray-400 hover:text-gray-200 transition-colors"
+                aria-label="Close"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <p className="text-sm text-gray-200 leading-relaxed">{selected.desc}</p>
+            <div className="mt-5 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setSelected(null)}
+                className="px-4 py-1.5 bg-[#2e303a] hover:bg-[#3e404a] rounded text-xs text-gray-200 transition-colors"
+              >
+                Close
+              </button>
+            </div>
+          </motion.div>
+        </motion.div>
+      )}
+    </AnimatePresence>
     </div>
   )
 }

@@ -4,7 +4,7 @@ The authoritative source for all tuning constants is `src/data/balance.ts`. This
 
 ## Core Loop
 
-- **Tick rate:** 200 ms (5 ticks per second).
+- **Tick rate:** 400 ms (2.5 ticks per second).
 - **Autosave:** Every 30 seconds (random chance per tick).
 - **Offline progress:** Constants exist (`OFFLINE_PROGRESS_MAX_HOURS`, `OFFLINE_PROGRESS_CHUNK_HOURS`) but the loading-overlay simulation is not yet wired to `loadGame()`.
 

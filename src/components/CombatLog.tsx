@@ -9,8 +9,11 @@ interface CombatLogProps {
 
 function formatEvent(event: CombatEvent): { text: string; color: string } {
   switch (event.type) {
-    case 'monsterSpawned':
-      return { text: `Spawned: ${event.monsterType} (Lv.${event.level})`, color: 'text-gray-400' }
+    case 'monsterSpawned': {
+      const rarityLabel = event.rarity === 'rare' ? 'Rare' : event.rarity === 'magic' ? 'Magic' : ''
+      const modList = event.modifierNames.length > 0 ? ` [${event.modifierNames.join(', ')}]` : ''
+      return { text: `Spawned: ${rarityLabel}${event.monsterType} (Lv.${event.level})${modList}`, color: 'text-gray-400' }
+    }
     case 'bossSpawned':
       return { text: `Boss spawned: ${event.bossId}`, color: 'text-purple-400' }
     case 'hitLanded':

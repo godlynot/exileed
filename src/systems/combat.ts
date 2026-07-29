@@ -4,6 +4,7 @@ import type {
   CombatState,
   GameState,
   Monster,
+  MonsterRarity,
   PassiveSpecialEffects,
   Zone,
   DamageType,
@@ -19,6 +20,13 @@ import { applyPassiveStats, applyAscendancyStats } from './passives.ts'
 import { MONSTERS } from '../data/monsters.ts'
 import { SKILLS } from '../data/skills.ts'
 import { SUPPORTS } from '../data/supports.ts'
+import {
+  MONSTER_MODIFIERS_BY_ID,
+  REWARD_MULTIPLIERS,
+  rollModifiers,
+  rollRarity,
+  scaleModifierValue,
+} from '../data/monsterModifiers.ts'
 import { createMomentumState, gainMomentum, tickMomentumDecay, effectiveCooldownTicks, momentumDamageMultiplier, isMaxMomentum, breakneckRaiseCap } from './momentum.ts'
 import { createAilmentFromSkill, createAilmentFromAura, tickAilments } from './ailments.ts'
 import { getGemLevel, gainGemXpForSkillUse, skillDamageMultiplier } from './gems.ts'
@@ -96,6 +104,8 @@ export function createCombatState(monster: Monster): CombatState {
     virulent: { stacks: {}, septicemiaMultiplier: {}, calcifyAccumulator: {}, slow: {}, patientZeroTarget: null },
     monsterDebuffs: {},
     plaguewindCarryover: [],
+    damageTakenByType: { physical: 0, fire: 0, cold: 0, lightning: 0, chaos: 0 },
+    deathSummary: null,
   }
 }
 
@@ -136,16 +146,66 @@ function createMonster(zone: Zone): Monster {
   let monster = { ...template, life: template.maxLife }
   monster = scaleMonster(monster, zone)
 
-  if (!monster.isBoss && !monster.isElite && Math.random() < zone.eliteChance) {
-    monster = {
-      ...monster,
-      isElite: true,
-      life: Math.floor(monster.life * 2.5),
-      maxLife: Math.floor(monster.maxLife * 2.5),
-      damage: monster.damage.map(d => ({ ...d, min: Math.floor(d.min * 1.5), max: Math.floor(d.max * 1.5) })),
-      experienceReward: Math.floor(monster.experienceReward * 1.8),
-      goldReward: Math.floor(monster.goldReward * 1.8),
+  // Bosses are hand-tuned and never roll modifiers.
+  if (monster.rarity === 'boss') {
+    return monster
+  }
+
+  // Determine rarity: normal / magic / rare.
+  const rarity: MonsterRarity = zone.eliteChance > 0 ? rollRarity(zone.level) : 'normal'
+  const modifiers = rarity !== 'normal' ? rollModifiers(rarity, zone.level) : []
+
+  // Apply modifiers in order: additive first, then multiplicative.
+  let lifeMult = 1
+  let damageMult = 1
+  let attackRateMult = 1
+  let armourAdd = 0
+  let evasionAdd = 0
+  let accuracyAdd = 0
+  let aura = monster.aura
+
+  for (const mod of modifiers) {
+    if (mod.lifeMult) lifeMult *= mod.lifeMult
+    if (mod.damageMult) damageMult *= mod.damageMult
+    if (mod.attackRateMult) attackRateMult *= mod.attackRateMult
+    if (mod.armourAdd) armourAdd += mod.armourAdd
+    if (mod.evasionAdd) evasionAdd += mod.evasionAdd
+    if (mod.accuracyAdd) accuracyAdd += mod.accuracyAdd
+    if (mod.aura) {
+      // If multiple auras somehow roll, keep the strongest nearby-ally bonus.
+      const current = aura?.nearbyAlliesDamagePercent ?? 0
+      const next = mod.aura.nearbyAlliesDamagePercent
+      if (next > current) {
+        aura = { nearbyAlliesDamagePercent: next }
+      }
     }
+  }
+
+  // Scale additive values to the zone level.
+  const scaledArmourAdd = scaleModifierValue(armourAdd, zone.level)
+  const scaledEvasionAdd = scaleModifierValue(evasionAdd, zone.level)
+  const scaledAccuracyAdd = scaleModifierValue(accuracyAdd, zone.level)
+
+  const rewardMult = REWARD_MULTIPLIERS[rarity]
+
+  monster = {
+    ...monster,
+    rarity,
+    modifierIds: modifiers.map(m => m.id),
+    life: Math.floor(monster.life * lifeMult),
+    maxLife: Math.floor(monster.maxLife * lifeMult),
+    damage: monster.damage.map(d => ({
+      ...d,
+      min: Math.max(1, Math.floor(d.min * damageMult)),
+      max: Math.max(1, Math.floor(d.max * damageMult)),
+    })),
+    attackRate: monster.attackRate * attackRateMult,
+    accuracy: monster.accuracy + scaledAccuracyAdd,
+    evasion: monster.evasion + scaledEvasionAdd,
+    armour: (monster.armour ?? 0) + scaledArmourAdd,
+    experienceReward: Math.floor(monster.experienceReward * rewardMult),
+    goldReward: Math.floor(monster.goldReward * rewardMult),
+    aura,
   }
 
   return monster
@@ -482,7 +542,12 @@ export function simulateTick(state: GameState): { state: GameState; events: Comb
     const tickDelayed = combat.delayedDamageQueue[0] ?? 0
     const nextLife = character.life - tickDelayed
     character = { ...character, life: Math.max(1, nextLife) }
-    combat = { ...combat, delayedDamageQueue: combat.delayedDamageQueue.slice(1) }
+    // Foreseen Doom delayed damage is treated as physical for the summary.
+    combat = {
+      ...combat,
+      delayedDamageQueue: combat.delayedDamageQueue.slice(1),
+      damageTakenByType: { ...combat.damageTakenByType, physical: combat.damageTakenByType.physical + tickDelayed },
+    }
     events.push(makeEvent({ type: 'delayedDamageTick', targetId: character.id, damage: tickDelayed }))
   }
 
@@ -562,8 +627,10 @@ export function simulateTick(state: GameState): { state: GameState; events: Comb
       const nextTimer = character.respawnTimer - 1
       if (nextTimer <= 0) {
         character = { ...character, isAlive: true, life: character.maxLife, energyShield: character.maxEnergyShield, respawnTimer: 0 }
+        combat = { ...combat, respawnTicks: 0, isRespawning: false, deathSummary: null }
       } else {
         character = { ...character, respawnTimer: nextTimer }
+        combat = { ...combat, respawnTicks: nextTimer }
       }
     }
     return {
@@ -576,9 +643,21 @@ export function simulateTick(state: GameState): { state: GameState; events: Comb
   if (!combat.monster) {
     if (!zone) return { state, events }
     const monster = createMonster(zone)
-    combat = { ...combat, monster, monsterLife: monster.maxLife }
-    events.push(makeEvent({ type: 'monsterSpawned', monsterId: monster.id, monsterType: monster.name, level: monster.level }))
-    if (monster.isBoss) {
+    combat = {
+      ...combat,
+      monster,
+      monsterLife: monster.maxLife,
+      damageTakenByType: { physical: 0, fire: 0, cold: 0, lightning: 0, chaos: 0 },
+    }
+    events.push(makeEvent({
+      type: 'monsterSpawned',
+      monsterId: monster.id,
+      monsterType: monster.name,
+      level: monster.level,
+      rarity: monster.rarity,
+      modifierNames: (monster.modifierIds ?? []).map(id => MONSTER_MODIFIERS_BY_ID[id]?.displayName ?? id),
+    }))
+    if (monster.rarity === 'boss') {
       events.push(makeEvent({ type: 'bossSpawned', bossId: monster.id }))
     }
   }
@@ -714,6 +793,7 @@ export function simulateTick(state: GameState): { state: GameState; events: Comb
       const monsterHit = character.special.alwaysHit ? true : Math.random() <= hitChance(effectiveMonsterAccuracy, character.evasion, combat.playerEvasionStacks)
     if (monsterHit) {
       let damageTaken = 0
+      const damageByType: Record<DamageType, number> = { physical: 0, fire: 0, cold: 0, lightning: 0, chaos: 0 }
       for (const component of monster.damage) {
         const raw = rollDamage(component.min, component.max) * (1 - monsterSlow)
         let componentDamage = raw
@@ -729,9 +809,19 @@ export function simulateTick(state: GameState): { state: GameState; events: Comb
           )
           componentDamage = Math.floor(applyResistance(character.resistances[component.type], raw, cap))
         }
+        damageByType[component.type] += componentDamage
         damageTaken += componentDamage
       }
-      damageTaken = Math.max(1, Math.floor(damageTaken * getDamageTakenMultiplier(character.special)))
+      const damageTakenMultiplier = getDamageTakenMultiplier(character.special)
+      const preMultTotal = Math.max(1, Object.values(damageByType).reduce((a, b) => a + b, 0))
+      damageTaken = Math.max(1, Math.floor(preMultTotal * damageTakenMultiplier))
+
+      // Track final damage dealt by type (proportional split after multipliers).
+      const nextDamageTakenByType = { ...combat.damageTakenByType }
+      for (const type of Object.keys(damageByType) as DamageType[]) {
+        nextDamageTakenByType[type] += Math.floor(damageByType[type] * damageTakenMultiplier)
+      }
+      combat = { ...combat, damageTakenByType: nextDamageTakenByType }
 
       // Marshal Hold the Line: flat DR from armour
       if (character.special.holdTheLine) {
@@ -811,7 +901,24 @@ export function simulateTick(state: GameState): { state: GameState; events: Comb
       if (character.life <= 0) {
         character = { ...character, life: 0 }
         character = applyDeathPenalty(character)
-        combat = { ...combat, isRespawning: true, respawnTicks: character.respawnTimer, delayedDamageQueue: [] }
+        const deathSummary = combat.monster
+          ? {
+              monsterName: combat.monster.name,
+              monsterLevel: combat.monster.level,
+              monsterRarity: combat.monster.rarity,
+              monsterModifiers: (combat.monster.modifierIds ?? []).map(
+                id => MONSTER_MODIFIERS_BY_ID[id]?.displayName ?? id
+              ),
+              damageTaken: { ...combat.damageTakenByType },
+            }
+          : null
+        combat = {
+          ...combat,
+          isRespawning: true,
+          respawnTicks: character.respawnTimer,
+          delayedDamageQueue: [],
+          deathSummary,
+        }
         events.push(makeEvent({ type: 'playerDied' }))
         return {
           state: { ...state, character, combat, zones, inventory, activeTrial, gamePhase },
@@ -835,7 +942,7 @@ export function simulateTick(state: GameState): { state: GameState; events: Comb
     const xpEarned = monster.experienceReward
 
     events.push(makeEvent({ type: 'monsterDied', monsterId: monster.id, monsterType: monster.name }))
-    if (monster.isBoss) {
+    if (monster.rarity === 'boss') {
       events.push(makeEvent({ type: 'bossDefeated', bossId: monster.id }))
     }
 
@@ -991,8 +1098,15 @@ export function simulateTick(state: GameState): { state: GameState; events: Comb
         nextAilments[nextMonster.id] = [...(nextAilments[nextMonster.id] ?? []), ...combat.plaguewindCarryover]
       }
       combat = { ...combat, monster: nextMonster, monsterLife: nextMonster.maxLife, virulent: { ...combat.virulent, patientZeroTarget: null }, ailments: nextAilments, plaguewindCarryover: [] }
-      events.push(makeEvent({ type: 'monsterSpawned', monsterId: nextMonster.id, monsterType: nextMonster.name, level: nextMonster.level }))
-      if (nextMonster.isBoss) {
+      events.push(makeEvent({
+        type: 'monsterSpawned',
+        monsterId: nextMonster.id,
+        monsterType: nextMonster.name,
+        level: nextMonster.level,
+        rarity: nextMonster.rarity,
+        modifierNames: (nextMonster.modifierIds ?? []).map(id => MONSTER_MODIFIERS_BY_ID[id]?.displayName ?? id),
+      }))
+      if (nextMonster.rarity === 'boss') {
         events.push(makeEvent({ type: 'bossSpawned', bossId: nextMonster.id }))
       }
     }

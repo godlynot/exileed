@@ -13,7 +13,7 @@ export const DROWNED_CORSAIR: Monster = {
   evasion: 30,
   experienceReward: 15,
   goldReward: 3,
-  isBoss: false,
+  rarity: 'normal',
 }
 
 export const MONSTERS: Record<string, Monster> = {
@@ -32,7 +32,7 @@ export const MONSTERS: Record<string, Monster> = {
     evasion: 20,
     experienceReward: 4,
     goldReward: 1,
-    isBoss: false,
+    rarity: 'normal',
   },
 
   tidecaller: {
@@ -47,7 +47,7 @@ export const MONSTERS: Record<string, Monster> = {
     evasion: 30,
     experienceReward: 8,
     goldReward: 2,
-    isBoss: false,
+    rarity: 'normal',
   },
 
   barnacled_hulk: {
@@ -63,7 +63,7 @@ export const MONSTERS: Record<string, Monster> = {
     armour: 20,
     experienceReward: 22,
     goldReward: 8,
-    isBoss: false,
+    rarity: 'normal',
   },
 
   reefstalker: {
@@ -78,7 +78,7 @@ export const MONSTERS: Record<string, Monster> = {
     evasion: 50,
     experienceReward: 6,
     goldReward: 2,
-    isBoss: false,
+    rarity: 'normal',
   },
 
   gale_torn_shade: {
@@ -96,7 +96,7 @@ export const MONSTERS: Record<string, Monster> = {
     evasion: 45,
     experienceReward: 5,
     goldReward: 1,
-    isBoss: false,
+    rarity: 'normal',
   },
 
   wreck_scavenger: {
@@ -111,9 +111,10 @@ export const MONSTERS: Record<string, Monster> = {
     evasion: 40,
     experienceReward: 7,
     goldReward: 6,
-    isBoss: false,
+    rarity: 'normal',
   },
 
+  // Former elite; now a normal template that can roll Warleader as a modifier.
   salt_crowned_revenant: {
     id: 'salt_crowned_revenant',
     name: 'Salt-Crowned Revenant',
@@ -129,9 +130,7 @@ export const MONSTERS: Record<string, Monster> = {
     evasion: 30,
     experienceReward: 28,
     goldReward: 10,
-    isBoss: false,
-    isElite: true,
-    aura: { nearbyAlliesDamagePercent: 25 },
+    rarity: 'normal',
   },
 
   shore_warden: {
@@ -150,7 +149,7 @@ export const MONSTERS: Record<string, Monster> = {
     armour: 15,
     experienceReward: 120,
     goldReward: 25,
-    isBoss: true,
+    rarity: 'boss',
   },
 
   storm_wrecked_warden: {
@@ -170,7 +169,7 @@ export const MONSTERS: Record<string, Monster> = {
     armour: 15,
     experienceReward: 250,
     goldReward: 40,
-    isBoss: true,
+    rarity: 'boss',
     phases: [
       {
         healthPercent: 0.6,
@@ -201,7 +200,7 @@ export const MONSTERS: Record<string, Monster> = {
     evasion: 80,
     experienceReward: 35,
     goldReward: 7,
-    isBoss: false,
+    rarity: 'normal',
   },
 
   cinder_swarm: {
@@ -219,7 +218,7 @@ export const MONSTERS: Record<string, Monster> = {
     evasion: 100,
     experienceReward: 22,
     goldReward: 5,
-    isBoss: false,
+    rarity: 'normal',
   },
 
   emberpriest: {
@@ -234,7 +233,7 @@ export const MONSTERS: Record<string, Monster> = {
     evasion: 60,
     experienceReward: 45,
     goldReward: 8,
-    isBoss: false,
+    rarity: 'normal',
   },
 
   slagborn: {
@@ -250,7 +249,7 @@ export const MONSTERS: Record<string, Monster> = {
     armour: 50,
     experienceReward: 90,
     goldReward: 14,
-    isBoss: false,
+    rarity: 'normal',
   },
 
   flarewing: {
@@ -265,7 +264,7 @@ export const MONSTERS: Record<string, Monster> = {
     evasion: 120,
     experienceReward: 32,
     goldReward: 7,
-    isBoss: false,
+    rarity: 'normal',
   },
 
   molten_husk: {
@@ -280,9 +279,10 @@ export const MONSTERS: Record<string, Monster> = {
     evasion: 70,
     experienceReward: 40,
     goldReward: 8,
-    isBoss: false,
+    rarity: 'normal',
   },
 
+  // Former elite; now a normal template that can roll Warleader as a modifier.
   forge_marked_zealot: {
     id: 'forge_marked_zealot',
     name: 'Forge-Marked Zealot',
@@ -298,9 +298,7 @@ export const MONSTERS: Record<string, Monster> = {
     evasion: 80,
     experienceReward: 85,
     goldReward: 13,
-    isBoss: false,
-    isElite: true,
-    aura: { nearbyAlliesDamagePercent: 20 },
+    rarity: 'normal',
   },
 
   cinder_throne_warden: {
@@ -320,7 +318,7 @@ export const MONSTERS: Record<string, Monster> = {
     armour: 40,
     experienceReward: 450,
     goldReward: 75,
-    isBoss: true,
+    rarity: 'boss',
     phases: [
       {
         healthPercent: 0.6,
@@ -351,7 +349,7 @@ export const MONSTERS: Record<string, Monster> = {
     evasion: 140,
     experienceReward: 85,
     goldReward: 15,
-    isBoss: false,
+    rarity: 'normal',
   },
 
   arc_wisp: {
@@ -366,7 +364,7 @@ export const MONSTERS: Record<string, Monster> = {
     evasion: 160,
     experienceReward: 55,
     goldReward: 10,
-    isBoss: false,
+    rarity: 'normal',
   },
 
   stormcaller: {
@@ -381,7 +379,7 @@ export const MONSTERS: Record<string, Monster> = {
     evasion: 120,
     experienceReward: 110,
     goldReward: 18,
-    isBoss: false,
+    rarity: 'normal',
   },
 
   glasswrought_sentinel: {
@@ -400,7 +398,7 @@ export const MONSTERS: Record<string, Monster> = {
     armour: 80,
     experienceReward: 200,
     goldReward: 30,
-    isBoss: false,
+    rarity: 'normal',
   },
 
   tempest_shade: {
@@ -418,7 +416,7 @@ export const MONSTERS: Record<string, Monster> = {
     evasion: 180,
     experienceReward: 95,
     goldReward: 16,
-    isBoss: false,
+    rarity: 'normal',
   },
 
   conductor: {
@@ -433,9 +431,10 @@ export const MONSTERS: Record<string, Monster> = {
     evasion: 130,
     experienceReward: 100,
     goldReward: 17,
-    isBoss: false,
+    rarity: 'normal',
   },
 
+  // Former elite; now a normal template that can roll Warleader as a modifier.
   spire_anointed: {
     id: 'spire_anointed',
     name: 'Spire-Anointed',
@@ -451,9 +450,7 @@ export const MONSTERS: Record<string, Monster> = {
     evasion: 150,
     experienceReward: 180,
     goldReward: 28,
-    isBoss: false,
-    isElite: true,
-    aura: { nearbyAlliesDamagePercent: 15 },
+    rarity: 'normal',
   },
 
   spire_crown: {
@@ -473,7 +470,7 @@ export const MONSTERS: Record<string, Monster> = {
     armour: 60,
     experienceReward: 900,
     goldReward: 150,
-    isBoss: true,
+    rarity: 'boss',
     phases: [
       {
         healthPercent: 0.6,
@@ -503,7 +500,7 @@ export const MONSTERS: Record<string, Monster> = {
     evasion: 120,
     experienceReward: 2000,
     goldReward: 500,
-    isBoss: true,
+    rarity: 'boss',
   },
 
   trial_lord: {
@@ -518,6 +515,6 @@ export const MONSTERS: Record<string, Monster> = {
     evasion: 200,
     experienceReward: 10000,
     goldReward: 2000,
-    isBoss: true,
+    rarity: 'boss',
   },
 }

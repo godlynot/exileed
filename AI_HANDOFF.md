@@ -59,7 +59,7 @@ src/
 
 ### 4.1 Game Loop
 
-- `TICK_RATE = 200ms` (5 ticks/sec) in `src/data/balance.ts`
+- `TICK_RATE = 400ms` (2.5 ticks/sec) in `src/data/balance.ts`
 - `useGameLoop` calls `store.tick()` every tick
 - `tick()` runs `simulateTick(state)` and keeps the last 50 combat events in `combat.events`
 
