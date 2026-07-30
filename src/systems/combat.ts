@@ -333,9 +333,12 @@ function skillDamage(
   const levelMultiplier = 1 + (character.level - 1) * 0.05
   const gemLevel = getGemLevel(character, equipped.skillId)
   const gemMultiplier = skillDamageMultiplier(gemLevel)
+  const isAttack = skill.tags.includes('attack')
+  const baseMin = skill.baseDamageMin + (isAttack ? weaponMin : 0)
+  const baseMax = skill.baseDamageMax + (isAttack ? weaponMax : 0)
   const rawBaseRoll = character.special.perfectCalculation
-    ? skill.baseDamageMax + weaponMax
-    : rollDamage(skill.baseDamageMin + weaponMin, skill.baseDamageMax + weaponMax)
+    ? baseMax
+    : rollDamage(baseMin, baseMax)
   const rawBase = Math.floor(rawBaseRoll * levelMultiplier * gemMultiplier)
   const lightningPct = Math.min(1, (character.special.physToLightning ?? 0) / 100)
   const baseAfterConversion = lightningPct > 0 ? Math.floor(rawBase * lightningPct) : 0
@@ -419,6 +422,10 @@ function skillDamage(
   if (skill.appliesAilment) {
     const ailment = createAilmentFromSkill(skill.appliesAilment, Math.floor(damage), skill.id)
     ailments.push(ailment)
+  }
+
+  if (monster.rarity === 'boss') {
+    damage *= (1 + (character.damageVsBossesPercent ?? 0) / 100)
   }
 
   return { damage: Math.max(1, Math.floor(damage)), damageType: skill.damageType, crit: isCrit, isHit: true, nextEquipped, ailments }
@@ -939,6 +946,7 @@ export function simulateTick(state: GameState): { state: GameState; events: Comb
       const goldMultiplier = character.special.unwaveringDeclaration ? 1.5 : 1.25
       goldEarned = Math.floor(goldEarned * goldMultiplier)
     }
+    goldEarned = Math.floor(goldEarned * (1 + (character.goldFindPercent ?? 0) / 100))
     const xpEarned = monster.experienceReward
 
     events.push(makeEvent({ type: 'monsterDied', monsterId: monster.id, monsterType: monster.name }))
@@ -948,13 +956,24 @@ export function simulateTick(state: GameState): { state: GameState; events: Comb
 
     // Momentum gain on kill (only for Warlords who have unlocked Momentum; Skirmishers build faster)
     if (character.special.momentum) {
-      const momentumGain = character.special.bannermansResolve === 'skirmishers' ? 2 : 1
-      let nextMomentum = gainMomentum(combat.momentum, momentumGain, character)
-      if (character.special.breakneck) {
-        nextMomentum = breakneckRaiseCap(nextMomentum)
+      if (!character.special.relentlessAdvance) {
+        const momentumGain = character.special.bannermansResolve === 'skirmishers' ? 2 : 1
+        let nextMomentum = gainMomentum(combat.momentum, momentumGain, character)
+        if (character.special.breakneck) {
+          nextMomentum = breakneckRaiseCap(nextMomentum)
+        }
+        combat = { ...combat, momentum: nextMomentum }
+        events.push(makeEvent({ type: 'momentumChanged', stacks: combat.momentum.stacks }))
+      } else if (character.special.breakneck) {
+        // Relentless Advance resets stacks when the fight ends, but Breakneck still raises the cap
+        combat = { ...combat, momentum: breakneckRaiseCap(combat.momentum) }
       }
-      combat = { ...combat, momentum: nextMomentum }
-      events.push(makeEvent({ type: 'momentumChanged', stacks: combat.momentum.stacks }))
+
+      // Relentless Advance: momentum fully resets when the fight ends
+      if (character.special.relentlessAdvance) {
+        combat = { ...combat, momentum: { ...createMomentumState(), capBonus: combat.momentum.capBonus } }
+        events.push(makeEvent({ type: 'momentumChanged', stacks: 0 }))
+      }
     }
 
     // Vanguard Blitz: at max momentum, echo damage to pack

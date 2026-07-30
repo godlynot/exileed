@@ -126,6 +126,9 @@ export interface Character {
   increasedAttackSpeed: number
   moreAttackSpeed: number
   increasedAccuracy: number
+  // Equipment-derived utility stats
+  damageVsBossesPercent: number
+  goldFindPercent: number
   // Recovery
   lifeRegen: number // life per tick
   esRecharge: number // energy shield per tick

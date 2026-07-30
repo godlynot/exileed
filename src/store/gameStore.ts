@@ -80,6 +80,8 @@ function createDefaultCharacter(classId: ClassId): Character {
     increasedAccuracy: 0,
     lifeRegen: 0,
     esRecharge: 0,
+    damageVsBossesPercent: 0,
+    goldFindPercent: 0,
   }
 }
 
