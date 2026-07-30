@@ -74,6 +74,9 @@ function App() {
     3: 'Fulgurite Spires',
     4: 'Crimson Swamps',
     5: 'Cursed Catacombs',
+    6: 'Frostbound Peaks',
+    7: 'The Rotting Deep',
+    8: 'Halls of Judgment',
   }
 
   const activeAct = activeZone?.act ?? 1

@@ -10,7 +10,7 @@ This file captures the full game spec, confirmed decisions, proposed original na
 - **Genre:** Idle / incremental ARPG inspired by Path of Exile systems
 - **Target:** Single-page React 19 + Vite + TypeScript app, client-side only, static deploy
 - **Repo:** `godlynot/exileed`
-- **Current state:** M4.5 skill/ascendancy systems are in place. Class selection, passive tree, ascendancies, items, crafting, skills, supports, and an event-driven combat loop are functional. Typecheck and tree/ascendancy validation pass.
+- **Current state:** M4.5 skill/ascendancy systems are in place. Class selection, passive tree, ascendancies, items, crafting, skills, supports, and an event-driven combat loop are functional. Typecheck and tree/ascendancy validation pass. Campaign Acts 1-8 are implemented.
 
 ---
 
@@ -117,15 +117,16 @@ The user explicitly rejected cutting load-bearing systems. The following reduce 
 - [x] Combat integration: `simulateTick` iterates equipped skills, scales skill/support damage by gem level, grants gem XP on hit, emits `gemLeveledUp` events
 - [x] 6-class roster restored/added: Brute, Stalker, Acolyte, Oracle, Warlord, Plaguebringer
 - [x] Ascendancy data replaced with Fateseer, Herald, Contagion, Virulent, Vanguard, Marshal
-- [x] Ascendancy wheel renderer with 12-node layout (5 keystones + 7 smalls)  - [x] Choice-keystone pickers: Heralds (6 auras) and Marshal armies (5 armies)
-  - [x] Twin Heralds (`herald_k3`) supports picking two auras via a dual-choice picker
-  - [x] Herald of Gold grants +% item rarity and +% extra item chance on kills; +50% stronger with Unwavering Declaration
-  - [x] Keystone special hooks and `validate:ascendancies` (Judgment, Gold, Iron Legion, Skirmishers now wired)
-  - [x] Save schema migration for skills/equipped supports/ascendancy choices
+- [x] Ascendancy wheel renderer with 12-node layout (5 keystones + 7 smalls)
+- [x] Choice-keystone pickers: Heralds (6 auras) and Marshal armies (5 armies)
+- [x] Twin Heralds (`herald_k3`) supports picking two auras via a dual-choice picker
+- [x] Herald of Gold grants +% item rarity and +% extra item chance on kills; +50% stronger with Unwavering Declaration
+- [x] Keystone special hooks and `validate:ascendancies` (Judgment, Gold, Iron Legion, Skirmishers now wired)
+- [x] Save schema migration for skills/equipped supports/ascendancy choices
 
-### Remaining for full M4 / M5
+### M5 — Complete Campaign ✅
 - [x] Complete campaign zones 4–5 (Crimson Swamps, Cursed Catacombs)
-- [ ] Complete campaign zones 6–8
+- [x] Complete campaign zones 6–8 (Frostbound Peaks, The Rotting Deep, Halls of Judgment)
 - [ ] Wire offline progress on startup
 - [x] Call `loadGame()` on app boot
 - [ ] Implement party/minion system so Herald auras and Marshal armies target the whole party set
@@ -152,7 +153,7 @@ Avoid all Path of Exile trademarked terms.
 
 ### Classes & Ascendancies (2 per class)
 | Base Class | Primary Stat | Passive Root | Ascendancy A | Ascendancy B |
-|---|---|---|---|---|
+|---|---|---|---|---|---|
 | Brute | Strength | Warlord region | **Juggernaut** (Armour/Life) — *placeholder, pending redesign* | **Berserker** (Physical Damage/Attack Speed) — *placeholder, pending redesign* |
 | Warlord | Strength | Warlord region | **Vanguard** (Momentum Offense) — *FINAL* | **Marshal** (Momentum Defense) — *FINAL* |
 | Stalker | Dexterity | Plaguebringer region | **Deadeye** (Accuracy/Crit) — *placeholder, pending redesign* | **Assassin** (Evasion/Crit) — *placeholder, pending redesign* |
@@ -160,7 +161,7 @@ Avoid all Path of Exile trademarked terms.
 | Acolyte | Intelligence | Oracle region | **Elementalist** (Spell Damage/Resistances) — *placeholder, pending redesign* | **Occultist** (Energy Shield/Chaos) — *placeholder, pending redesign* |
 | Oracle | Intelligence | Oracle region | **Fateseer** (Deterministic hits) — *FINAL* | **Herald** (Standing auras) — *FINAL* |
 
-**Note:** The passive tree retains its three original roots (Warlord, Plaguebringer, Oracle regions). Old and new classes share roots by stat focus; a full six-root redesign is on hold for v1.
+**Note:** The passive tree retains its three original roots (Warlord, Plaguebringer, Oracle regions). Old and new class shares roots by stat focus; a full six-root redesign is on hold for v1.
 
 ### Crafting Currencies (Orbs)
 | Function | Name |
@@ -181,9 +182,9 @@ Avoid all Path of Exile trademarked terms.
 3. Fulgurite Spires ✅ (levels 17–24, lightning identity)
 4. Crimson Swamps ✅ (levels 24–32, mixed elemental)
 5. Cursed Catacombs ✅ (levels 32–40, chaos identity)
-6. Frostbound Peaks
-7. The Rotting Deep
-8. Halls of Judgment
+6. Frostbound Peaks ✅ (levels 40–50, physical/armour-pierce)
+7. The Rotting Deep ✅ (levels 50–58, ailments/DoT)
+8. Halls of Judgment ✅ (levels 58–65, everything/crit)
 
 ### Trial Placement
 - **Trial of Ascension** — Act 3 (level ~30): unlocks first ascendancy choice, 2 points
@@ -221,8 +222,8 @@ Avoid all Path of Exile trademarked terms.
 
 ## 8. Open Questions Remaining
 
-1. Should we complete zones 4–8 next, or move to the Nexus endgame first?
-2. Should we wire the offline progress overlay now, or after the campaign is complete?
+1. Should we move to the Nexus endgame next, or polish existing systems?
+2. Should we wire the offline progress overlay now, or after the endgame is sketched?
 3. Should we remove the unused `konva` and `react-konva` dependencies?
 
 ---
@@ -231,7 +232,7 @@ Avoid all Path of Exile trademarked terms.
 
 ### Armour mitigation drift (accepted for now)
 
-**Current status:** Accepted as a known balance quirk; revisit after Acts 4–5 are built.
+**Current status:** Accepted as a known balance quirk; revisit after the full campaign is balanced. Updated after Acts 6–8 were built and validated.
 
 **What it is:** After wiring gear to scale per zone with the front-loaded act curve (`monsterScalingMultiplier`), the `validate:balance` script reports armour mitigation rising from ~28% at level 1 to ~52% at level 23 (Spire Crown).
 
@@ -246,4 +247,4 @@ Avoid all Path of Exile trademarked terms.
 
 ---
 
-*Last updated: 2026-07-23 (gear now scales per zone/act; mitigation drift documented as accepted)*
+*Last updated: 2026-07-30 (Acts 6–8 campaign content added and balanced)*

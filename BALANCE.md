@@ -18,7 +18,7 @@ The authoritative source for all tuning constants is `src/data/balance.ts`. This
 ### Attribute-Derived Bonuses
 
 | Attribute | Bonus per point | Bonus per 10 points |
-|---|---|---|
+|---|---|---|---|
 | Strength | +2 Life | +0.5% increased melee physical damage |
 | Dexterity | +2 Accuracy | +0.5% increased evasion |
 | Intelligence | +2 Energy Shield | +0.5% increased spell damage |
@@ -74,7 +74,7 @@ letting it trivialize incoming attacks.
 ### Resistances
 
 - Flat, additive, hard-capped at 75%.
-- Zealot’s Creed raises the elemental cap to 85%.
+- Zealot's Creed raises the elemental cap to 85%.
 - Negative resistances are possible down to -75%.
 
 ## Recovery
@@ -87,7 +87,7 @@ letting it trivialize incoming attacks.
 
 - Character retreats at 0 life.
 - Respawn time: 5 seconds.
-- XP penalty: 10% of the current level’s XP-to-next (never de-levels).
+- XP penalty: 10% of the current level's XP-to-next (never de-levels).
 
 ## Monster Scaling
 
@@ -161,12 +161,15 @@ These bonuses stack with the existing zone-level drop tables in `src/systems/ite
 ### Campaign Acts (Implemented)
 
 | Act | Name | Levels | Damage Identity | Lesson |
-|---|---|---|---|---|
+|---|---|---|---|---|---|
 | 1 | The Shattered Coast | 1–8 | Physical / Cold | Introduce mitigation & resists |
 | 2 | The Cinder Marches | 9–16 | Fire | Cap fire resistance |
 | 3 | Fulgurite Spires | 17–24 | Lightning | Lightning resist + accuracy |
 | 4 | Crimson Swamps | 24–32 | Mixed elemental | Cap all three resists |
 | 5 | Cursed Catacombs | 32–40 | Chaos introduced | Chaos resist, ES vs life |
+| 6 | Frostbound Peaks | 40–50 | Heavy physical / armour-piercing | Armour + max life scaling |
+| 7 | The Rotting Deep | 50–58 | Ailments / DoT | Ailment mitigation, recovery |
+| 8 | Halls of Judgment | 58–65 | Everything + high crit | Balanced defense, crit mitigation |
 
 ### Monster Scaling in `createMonster`
 
