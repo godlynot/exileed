@@ -82,6 +82,9 @@ function createDefaultCharacter(classId: ClassId): Character {
     esRecharge: 0,
     damageVsBossesPercent: 0,
     goldFindPercent: 0,
+    chanceToBleed: 0,
+    chanceToShock: 0,
+    chanceToInflictDespair: 0,
   }
 }
 

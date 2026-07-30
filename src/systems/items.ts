@@ -483,6 +483,9 @@ export function recalculateCharacterFromEquipment(character: Character, equipmen
     esRecharge,
     damageVsBossesPercent: bonus.damageVsBossesPercent,
     goldFindPercent: bonus.goldFindPercent,
+    chanceToBleed: bonus.chanceToBleed,
+    chanceToShock: bonus.chanceToShock,
+    chanceToInflictDespair: bonus.chanceToInflictDespair,
     special: {},
     resistances: {
       fire: clamp(character.resistances.fire + bonus.resistances.fire, -0.75, 0.75),

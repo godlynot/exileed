@@ -316,10 +316,11 @@ function skillDamage(
 } {
   const supports = supportsForSkill(equipped, skill)
   const supportMods = aggregateSupportModifiers(supports, equipped.supportIds, character)
+  const supportActionSpeed = (supportMods.increased['inc_attack_speed_percent'] ?? 0) / 100
 
   const isHit = character.special.alwaysHit ? true : Math.random() <= hitChance(character.accuracy, monster.evasion, evasionStacks)
   if (!isHit) {
-    return { damage: 0, damageType: skill.damageType, crit: false, isHit: false, nextEquipped: { ...equipped, cooldownRemaining: effectiveCooldownTicks(skill.cooldownTicks, combat.momentum, character) }, ailments: [] }
+    return { damage: 0, damageType: skill.damageType, crit: false, isHit: false, nextEquipped: { ...equipped, cooldownRemaining: effectiveCooldownTicks(skill.cooldownTicks, combat.momentum, character, supportActionSpeed) }, ailments: [] }
   }
 
   const effectiveness = skill.damageEffectiveness
@@ -341,7 +342,6 @@ function skillDamage(
     : rollDamage(baseMin, baseMax)
   const rawBase = Math.floor(rawBaseRoll * levelMultiplier * gemMultiplier)
   const lightningPct = Math.min(1, (character.special.physToLightning ?? 0) / 100)
-  const baseAfterConversion = lightningPct > 0 ? Math.floor(rawBase * lightningPct) : 0
 
   const incPhys = (character.increasedPhysicalDamage + (supportMods.increased['inc_phys_damage_percent'] ?? 0) / 100)
   const morePhys = character.morePhysicalDamage * (1 + (supportMods.more['inc_phys_damage_percent'] ?? 0) / 100) * (character.special.moreDamageMultiplier ?? 1)
@@ -355,13 +355,27 @@ function skillDamage(
   const monsterArmour = (monster.armour ?? 0) + monster.level * 2
   const mitigation = armourMitigation(monsterArmour, rawBase)
 
+  // Support specials
+  const hasExtraProjectile = supports.some(s => s.special === 'extraProjectile') && skill.tags.includes('projectile')
+  const hasConvertChaos = supports.some(s => s.special === 'convertPhysicalToChaos')
+
   let damage = 0
   if (skill.damageType === 'physical') {
-    const physicalPart = Math.floor(rawBase * (1 - lightningPct)) + flatPhys
-    const lightningPart = baseAfterConversion + flatLightning
+    const chaosPct = hasConvertChaos ? 0.5 : 0
+    const totalConvert = Math.min(1, lightningPct + chaosPct)
+    let normLightning = 0
+    let normChaos = 0
+    if (totalConvert > 0) {
+      normLightning = lightningPct / (lightningPct + chaosPct)
+      normChaos = chaosPct / (lightningPct + chaosPct)
+    }
+    const physicalPart = Math.floor(rawBase * (1 - totalConvert)) + flatPhys
+    const lightningPart = Math.floor(rawBase * totalConvert * normLightning) + flatLightning
+    const chaosPart = Math.floor(rawBase * totalConvert * normChaos)
     const physDamage = physicalPart * (1 + incPhys) * morePhys * (1 - mitigation)
     const spellDamage = lightningPart * (1 + incSpell + incEle) * moreSpell * moreEle
-    damage = physDamage + spellDamage
+    const chaosDamage = chaosPart * (1 + incSpell) * moreSpell
+    damage = physDamage + spellDamage + chaosDamage
   } else {
     const raw = rawBase + (skill.damageType === 'fire' ? flatFire : skill.damageType === 'cold' ? flatCold : skill.damageType === 'lightning' ? flatLightning : 0)
     const inc = skill.damageType === 'chaos' ? incSpell : (incSpell + incEle)
@@ -369,7 +383,7 @@ function skillDamage(
     damage = raw * (1 + inc) * m
   }
 
-  let nextEquipped: EquippedSkill = { ...equipped, cooldownRemaining: effectiveCooldownTicks(skill.cooldownTicks, combat.momentum, character), hitCounter: equipped.hitCounter + 1 }
+  let nextEquipped: EquippedSkill = { ...equipped, cooldownRemaining: effectiveCooldownTicks(skill.cooldownTicks, combat.momentum, character, supportActionSpeed), hitCounter: equipped.hitCounter + 1 }
 
   if (character.special.measuredStrikes && nextEquipped.hitCounter % 3 === 0) {
     damage *= 2
@@ -383,6 +397,11 @@ function skillDamage(
 
   // Momentum damage bonus
   damage *= momentumDamageMultiplier(combat.momentum, character)
+
+  // Extra Projectile: projectile skills deal more damage
+  if (hasExtraProjectile) {
+    damage *= 1.25
+  }
 
   // Herald damage multiplier
   const firstHit = isFirstHit(combat, monster.id)
@@ -422,6 +441,17 @@ function skillDamage(
   if (skill.appliesAilment) {
     const ailment = createAilmentFromSkill(skill.appliesAilment, Math.floor(damage), skill.id)
     ailments.push(ailment)
+  }
+
+  // Gear chance-to-ailment procs
+  if (Math.random() * 100 < (character.chanceToBleed ?? 0)) {
+    ailments.push(createAilmentFromSkill({ type: 'bleed', damagePerSecond: Math.max(1, Math.floor(damage * 0.2)), durationSeconds: 5 }, Math.floor(damage), skill.id))
+  }
+  if (Math.random() * 100 < (character.chanceToShock ?? 0)) {
+    ailments.push(createAilmentFromSkill({ type: 'burn', damagePerSecond: Math.max(1, Math.floor(damage * 0.15)), durationSeconds: 4 }, Math.floor(damage), skill.id))
+  }
+  if (Math.random() * 100 < (character.chanceToInflictDespair ?? 0)) {
+    ailments.push(createAilmentFromSkill({ type: 'poison', damagePerSecond: Math.max(1, Math.floor(damage * 0.25)), durationSeconds: 6 }, Math.floor(damage), skill.id))
   }
 
   if (monster.rarity === 'boss') {

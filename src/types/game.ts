@@ -129,6 +129,10 @@ export interface Character {
   // Equipment-derived utility stats
   damageVsBossesPercent: number
   goldFindPercent: number
+  // Ailment proc chances from gear
+  chanceToBleed: number
+  chanceToShock: number
+  chanceToInflictDespair: number
   // Recovery
   lifeRegen: number // life per tick
   esRecharge: number // energy shield per tick

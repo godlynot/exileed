@@ -82,6 +82,6 @@ export function momentumDamageReduction(state: MomentumState): number {
   return Math.min(MOMENTUM.DAMAGE_REDUCTION_CAP, state.stacks * MOMENTUM.DAMAGE_REDUCTION_PER_STACK)
 }
 
-export function effectiveCooldownTicks(baseCooldown: number, state: MomentumState, character?: Character): number {
-  return Math.max(1, Math.floor(baseCooldown / momentumActionSpeed(state, character)))
+export function effectiveCooldownTicks(baseCooldown: number, state: MomentumState, character?: Character, addedSpeed: number = 0): number {
+  return Math.max(1, Math.floor(baseCooldown / (momentumActionSpeed(state, character) + addedSpeed)))
 }
