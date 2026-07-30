@@ -124,7 +124,8 @@ The user explicitly rejected cutting load-bearing systems. The following reduce 
   - [x] Save schema migration for skills/equipped supports/ascendancy choices
 
 ### Remaining for full M4 / M5
-- [ ] Complete 8-act campaign zones 4–8
+- [x] Complete campaign zones 4–5 (Crimson Swamps, Cursed Catacombs)
+- [ ] Complete campaign zones 6–8
 - [ ] Wire offline progress on startup
 - [x] Call `loadGame()` on app boot
 - [ ] Implement party/minion system so Herald auras and Marshal armies target the whole party set
@@ -178,11 +179,11 @@ Avoid all Path of Exile trademarked terms.
 1. The Shattered Coast ✅ (levels 1–8)
 2. The Cinder Marches ✅ (levels 9–16, fire identity)
 3. Fulgurite Spires ✅ (levels 17–24, lightning identity)
-4. Crimson Swamps
-5. Frostbound Peaks
-6. Cursed Catacombs
-7. Halls of Judgment
-8. Elysian Threshold
+4. Crimson Swamps ✅ (levels 24–32, mixed elemental)
+5. Cursed Catacombs ✅ (levels 32–40, chaos identity)
+6. Frostbound Peaks
+7. The Rotting Deep
+8. Halls of Judgment
 
 ### Trial Placement
 - **Trial of Ascension** — Act 3 (level ~30): unlocks first ascendancy choice, 2 points

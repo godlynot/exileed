@@ -72,6 +72,8 @@ function App() {
     1: 'The Shattered Coast',
     2: 'The Cinder Marches',
     3: 'Fulgurite Spires',
+    4: 'Crimson Swamps',
+    5: 'Cursed Catacombs',
   }
 
   const activeAct = activeZone?.act ?? 1

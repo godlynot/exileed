@@ -165,6 +165,8 @@ These bonuses stack with the existing zone-level drop tables in `src/systems/ite
 | 1 | The Shattered Coast | 1–8 | Physical / Cold | Introduce mitigation & resists |
 | 2 | The Cinder Marches | 9–16 | Fire | Cap fire resistance |
 | 3 | Fulgurite Spires | 17–24 | Lightning | Lightning resist + accuracy |
+| 4 | Crimson Swamps | 24–32 | Mixed elemental | Cap all three resists |
+| 5 | Cursed Catacombs | 32–40 | Chaos introduced | Chaos resist, ES vs life |
 
 ### Monster Scaling in `createMonster`
 

@@ -11,12 +11,13 @@
 
 import { MONSTERS } from '../src/data/monsters.ts'
 import { ZONES } from '../src/data/zones.ts'
-import { DAMAGE, monsterScalingMultiplier } from '../src/data/balance.ts'
+import { DAMAGE, TICKS_PER_SECOND, monsterScalingMultiplier } from '../src/data/balance.ts'
 import { createItem, recalculateCharacterFromEquipment } from '../src/systems/items.ts'
 import { applyPassiveStats, applyAscendancyStats, allocateNode, getAdjacency, getNode } from '../src/systems/passives.ts'
 import { PASSIVE_TREE } from '../src/data/passiveTree.ts'
 import { CLASSES, CLASS_ROOT_MAP } from '../src/data/classes.ts'
-import type { Character, ClassId, Monster } from '../src/types/game.ts'
+import { SKILLS } from '../src/data/skills.ts'
+import type { Character, ClassId, EquippedSkill, Monster } from '../src/types/game.ts'
 import type { Equipment, Item } from '../src/types/item.ts'
 
 // ---------------------------------------------------------------------------
@@ -25,7 +26,12 @@ import type { Equipment, Item } from '../src/types/item.ts'
 // headlessly. Until then this is an estimate and the thresholds are advisory.
 // ---------------------------------------------------------------------------
 
-interface PowerEstimate { dps: number; ehp: number; armour: number }
+interface PowerEstimate {
+  dps: number
+  ehp: number
+  armour: number
+  effectiveHit: number
+}
 
 const SLOT_BASES: Record<keyof Equipment, string> = {
   weapon: 'rusted_axe',
@@ -120,6 +126,7 @@ function createDefaultCharacter(classId: ClassId): Character {
     respawnTimer: 0,
     allocatedNodes: [`root_${CLASS_ROOT_MAP[classId]}`],
     passivePoints: 0,
+    equippedSkills: [{ skillId: 'strike', supportIds: [], cooldownRemaining: 0, hitCounter: 0 }],
     ascendancyId: null,
     allocatedAscendancyNodes: [],
     keystoneChoices: {},
@@ -144,7 +151,11 @@ function createDefaultCharacter(classId: ClassId): Character {
   }
 }
 
-function estimatePlayerPower(level: number): PowerEstimate {
+function armourMitigation(armour: number, damage: number): number {
+  return armour / (armour + 5 * damage)
+}
+
+function estimatePlayerPower(level: number, threat: Monster): PowerEstimate {
   const originalRandom = Math.random
   Math.random = () => 0.5
   try {
@@ -160,11 +171,51 @@ function estimatePlayerPower(level: number): PowerEstimate {
     character = applyPassiveStats(character, PASSIVE_TREE)
     character = applyAscendancyStats(character)
 
-    const avgHit = ((character.basePhysicalDamageMin + character.basePhysicalDamageMax) / 2) * (1 + (character.increasedPhysicalDamage ?? 0))
-    const critMult = 1 + character.criticalChance * (character.criticalMultiplier - 1)
-    const dps = avgHit * character.attackRate * critMult
+    // --- DPS: faithful mirror of skillDamage() for a default Heavy Strike ---
+    const skill = SKILLS.strike
+    const weaponMin = character.basePhysicalDamageMin ?? 0
+    const weaponMax = character.basePhysicalDamageMax ?? 0
+    const levelMultiplier = 1 + (level - 1) * 0.05
+    const gemMultiplier = 1.0 // validator assumes level-1 gem
 
-    return { dps, ehp: character.maxLife, armour: character.armour }
+    // Average roll (deterministic).
+    const rawBaseRoll = (skill.baseDamageMin + weaponMin + skill.baseDamageMax + weaponMax) / 2
+    const rawBase = Math.floor(rawBaseRoll * levelMultiplier * gemMultiplier)
+
+    // Armour mitigation against the threat's armour.
+    const monsterArmour = (threat.armour ?? 0) + threat.level * 2
+    const mitigation = armourMitigation(monsterArmour, rawBase)
+
+    const incPhys = character.increasedPhysicalDamage ?? 0
+    const morePhys = character.morePhysicalDamage ?? 1
+    const damagePerHit = rawBase * (1 + incPhys) * morePhys * (1 - mitigation)
+
+    // Average crit multiplier.
+    const critMult = 1 + character.criticalChance * (character.criticalMultiplier - 1)
+    const avgDamagePerHit = damagePerHit * critMult
+
+    // Cooldown in seconds (combat.ts uses ticks / TICKS_PER_SECOND).
+    const cooldownSeconds = skill.cooldownTicks / TICKS_PER_SECOND
+    const dps = avgDamagePerHit / cooldownSeconds
+
+    // --- EHP: raw life pool, and the real average incoming hit vs this threat ---
+    const ehp = character.maxLife + character.maxEnergyShield
+
+    const totalWeight = threat.damage.reduce((sum, d) => sum + (d.min + d.max) / 2, 0)
+    const effectiveHit =
+      totalWeight === 0
+        ? 1
+        : threat.damage.reduce((sum, d) => {
+            const avg = (d.min + d.max) / 2
+            if (d.type === 'physical') {
+              const mit = armourMitigation(character.armour, d.max)
+              return sum + avg * (1 - mit)
+            }
+            const resist = character.resistances[d.type] ?? 0
+            return sum + avg * (1 - Math.min(resist, DAMAGE.RESISTANCE_CAP))
+          }, 0)
+
+    return { dps, ehp, armour: character.armour, effectiveHit }
   } finally {
     Math.random = originalRandom
   }
@@ -221,8 +272,6 @@ for (const zone of ZONES) {
     continue
   }
 
-  const power = estimatePlayerPower(zone.level)
-
   const nonBoss = pool.filter(m => !m.isBoss)
   // Use median life to avoid outliers like ultra-weak swarms or rare elites.
   const byLife = [...nonBoss].sort((a, b) => a.maxLife - b.maxLife)
@@ -231,8 +280,10 @@ for (const zone of ZONES) {
   const boss = pool.find(m => m.isBoss)
   const threat = nonBoss.length > 0 ? nonBoss.reduce((a, b) => (avgDamage(a) > avgDamage(b) ? a : b)) : pool[0]
 
+  const power = estimatePlayerPower(zone.level, threat)
+
+  // Mitigation shown in the table is a physical-only estimate for readability.
   const mitigation = power.armour / (power.armour + 5 * maxDamage(threat))
-  const effectiveHit = maxDamage(threat) * (1 - mitigation)
 
   rows.push({
     zone: zone.id,
@@ -240,7 +291,7 @@ for (const zone of ZONES) {
     ttkTrash: trash ? trash.maxLife / power.dps : -1,
     ttkTank: tank ? tank.maxLife / power.dps : -1,
     ttkBoss: boss ? boss.maxLife / power.dps : 0,
-    hitsToDie: power.ehp / Math.max(effectiveHit, 0.01),
+    hitsToDie: power.ehp / Math.max(power.effectiveHit, 0.01),
     mitigation,
     isBossOnly: nonBoss.length === 0,
   })
