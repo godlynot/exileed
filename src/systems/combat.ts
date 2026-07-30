@@ -876,7 +876,7 @@ export function simulateTick(state: GameState): { state: GameState; events: Comb
       combat = { ...combat, lastDamageTaken: 0 }
     } else {
       const effectiveMonsterAccuracy = combat.monsterDebuffs.blind ? monster.accuracy * 0.9 : monster.accuracy
-      const monsterHit = character.special.alwaysHit ? true : Math.random() <= hitChance(effectiveMonsterAccuracy, character.evasion, combat.playerEvasionStacks)
+      const monsterHit = Math.random() <= hitChance(effectiveMonsterAccuracy, character.evasion, combat.playerEvasionStacks)
     if (monsterHit) {
       let damageTaken = 0
       const damageByType: Record<DamageType, number> = { physical: 0, fire: 0, cold: 0, lightning: 0, chaos: 0 }

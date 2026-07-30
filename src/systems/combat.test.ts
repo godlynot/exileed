@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, spyOn } from "bun:test";
-import { skillDamage, armourMitigation, applyResistance, hitChance, createCombatState, processSkillHits, aggregateSupportModifiers } from "./combat.ts";
-import type { Character, Monster, Skill, EquippedSkill, CombatState } from "../types/game.ts";
+import { skillDamage, armourMitigation, applyResistance, hitChance, createCombatState, processSkillHits, aggregateSupportModifiers, simulateTick } from "./combat.ts";
+import type { Character, Monster, Skill, EquippedSkill, CombatState, GameState } from "../types/game.ts";
 
 // --- Fixtures ---
 
@@ -109,6 +109,25 @@ function makeEquippedSkill(skill: Skill, supportIds: string[] = []): EquippedSki
     supportIds,
     cooldownRemaining: 0,
     hitCounter: 0,
+  };
+}
+
+function makeGameState(character: Character, combat: CombatState): GameState {
+  return {
+    character,
+    zones: [],
+    activeZoneId: "",
+    previousZoneId: null,
+    inventory: { items: [], maxSize: 60, autoSellNormal: false, autoSellMagic: false } as any,
+    equipment: {} as any,
+    currencies: {},
+    combat,
+    lastSaveTime: 0,
+    saveVersion: 4,
+    passiveTree: { nodes: [], edges: [], roots: [], allocatedNodes: new Set() } as any,
+    gamePhase: "combat" as any,
+    activeTrial: null,
+    tickCounter: 0,
   };
 }
 
@@ -277,5 +296,67 @@ describe("skillDamage regressions", () => {
     const result = processSkillHits(char, monster, combat);
 
     expect(result.combat.momentum.stacks).toBeGreaterThan(0);
+  });
+});
+
+describe("combat simulation regressions", () => {
+  it("alwaysHit only affects player attacks, not monster attacks", () => {
+    // High player evasion means monster hit chance is at the 5% floor.
+    // With alwaysHit bug, monster would still hit. With the fix, a miss roll evades.
+    const char = makeCharacter({ special: { alwaysHit: true }, evasion: 10000 });
+    const monster = makeMonster({ accuracy: 100 });
+    const combat = makeCombat(monster);
+    const state = makeGameState(char, combat);
+
+    // Mock random so the monster hit roll is above the 5% floor (miss).
+    const randomMock = spyOn(Math, "random").mockReturnValue(0.99);
+    const { state: nextState, events } = simulateTick(state);
+    randomMock.mockRestore();
+
+    // Monster should have missed, so no damage taken by player from monster hit
+    const hitLanded = events.filter(e => e.type === "hitLanded" && e.source === "monster");
+    expect(hitLanded.length).toBe(0);
+    expect(nextState.character.life).toBe(char.life);
+  });
+
+  it("Foreseen Doom delayed ticks reset ES recharge delay", () => {
+    // Queue 3 ticks of delayed damage; ES should not recharge while ticks are applied.
+    // High evasion prevents the monster from landing hits and resetting the timer itself.
+    const char = makeCharacter({
+      special: { foreseenDoom: true },
+      life: 1000,
+      maxLife: 1000,
+      evasion: 10000,
+      energyShield: 0,
+      maxEnergyShield: 100,
+      esRecharge: 10,
+    });
+    const monster = makeMonster({ life: 1000, maxLife: 1000, damage: [{ type: "physical", min: 0, max: 0 }] });
+    let combat = makeCombat(monster);
+    combat.delayedDamageQueue = [10, 10, 10];
+    combat.ticksSinceDamageTaken = 100; // would otherwise allow ES recharge
+    const state = makeGameState(char, combat);
+
+    const randomMock = spyOn(Math, "random").mockReturnValue(0.99);
+
+    let current = state;
+    for (let i = 0; i < 3; i++) {
+      current = simulateTick(current).state;
+      // Timer is refreshed by the delayed tick; it should not advance past the first post-damage tick.
+      expect(current.combat.ticksSinceDamageTaken).toBeLessThanOrEqual(1);
+      expect(current.character.energyShield).toBe(0);
+    }
+
+    // After the delayed damage window ends, ES still should not recharge until the configured delay elapses (7.5 ticks at 2.5 tps).
+    for (let i = 0; i < 6; i++) {
+      current = simulateTick(current).state;
+      expect(current.character.energyShield).toBe(0);
+    }
+
+    // On the 7th tick after the last delayed damage, ES should start recharging.
+    current = simulateTick(current).state;
+    expect(current.character.energyShield).toBeGreaterThan(0);
+
+    randomMock.mockRestore();
   });
 });
