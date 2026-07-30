@@ -51,7 +51,7 @@ function rollDamage(min: number, max: number): number {
   return Math.floor(Math.random() * (max - min + 1)) + min
 }
 
-function evadeChance(defenderEvasion: number, attackerAccuracy: number): number {
+export function evadeChance(defenderEvasion: number, attackerAccuracy: number): number {
   // Asymptotic evasion: the more evasion you have, the harder each extra point
   // is to notice. Keeps 1k+ evasion strong (≈70-75%) without ever quite reaching
   // the cap, so accuracy still matters and evasion remains a viable alternative
@@ -61,13 +61,13 @@ function evadeChance(defenderEvasion: number, attackerAccuracy: number): number 
   return Math.min(chance, DAMAGE.EVASION_CAP)
 }
 
-function hitChance(attackerAccuracy: number, defenderEvasion: number, stacks: number = 0): number {
+export function hitChance(attackerAccuracy: number, defenderEvasion: number, stacks: number = 0): number {
   const base = clamp(1 - evadeChance(defenderEvasion, attackerAccuracy), 0.05, 1)
   const bonus = Math.min(stacks * DAMAGE.EVASION_STREAK_BONUS_PER_STACK, DAMAGE.EVASION_STREAK_BONUS_MAX)
   return clamp(base + bonus, 0.05, 1)
 }
 
-function armourMitigation(armour: number, damage: number): number {
+export function armourMitigation(armour: number, damage: number): number {
   return armour / (armour + DAMAGE.ARMOUR_MITIGATION_DENOMINATOR * damage)
 }
 
@@ -211,7 +211,7 @@ function createMonster(zone: Zone): Monster {
   return monster
 }
 
-function applyResistance(resistance: number, damage: number, cap: number = DAMAGE.RESISTANCE_CAP): number {
+export function applyResistance(resistance: number, damage: number, cap: number = DAMAGE.RESISTANCE_CAP): number {
   const effective = clamp(resistance, -1, cap)
   return Math.max(0, damage * (1 - effective))
 }
@@ -299,7 +299,7 @@ function heraldDamageReduction(combat: CombatState, special: PassiveSpecialEffec
   return active.includes('silence') ? (special.unwaveringDeclaration ? 0.12 : 0.08) : 0
 }
 
-function skillDamage(
+export function skillDamage(
   character: Character,
   equipped: EquippedSkill,
   skill: Skill,
