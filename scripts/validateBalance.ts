@@ -272,12 +272,12 @@ for (const zone of ZONES) {
     continue
   }
 
-  const nonBoss = pool.filter(m => !m.isBoss)
+  const nonBoss = pool.filter(m => m.rarity !== 'boss')
   // Use median life to avoid outliers like ultra-weak swarms or rare elites.
   const byLife = [...nonBoss].sort((a, b) => a.maxLife - b.maxLife)
   const trash = nonBoss.length > 0 ? byLife[Math.floor(byLife.length / 2)] : undefined
   const tank = nonBoss.length > 0 ? byLife[byLife.length - 1] : undefined
-  const boss = pool.find(m => m.isBoss)
+  const boss = pool.find(m => m.rarity === 'boss')
   const threat = nonBoss.length > 0 ? nonBoss.reduce((a, b) => (avgDamage(a) > avgDamage(b) ? a : b)) : pool[0]
 
   const power = estimatePlayerPower(zone.level, threat)
@@ -398,8 +398,8 @@ for (let i = 1; i < ZONES.length; i++) {
   const prevTemplate = allMonsters.filter(m => ZONES[i - 1].monsterIds.includes(m.id))
   const curTemplate = allMonsters.filter(m => ZONES[i].monsterIds.includes(m.id))
   if (!prevTemplate.length || !curTemplate.length) continue
-  const prevNonBoss = prevTemplate.filter(m => !m.isBoss).map(m => scaleMonsterToZone(m, ZONES[i - 1].level))
-  const curNonBoss = curTemplate.filter(m => !m.isBoss).map(m => scaleMonsterToZone(m, ZONES[i].level))
+  const prevNonBoss = prevTemplate.filter(m => m.rarity !== 'boss').map(m => scaleMonsterToZone(m, ZONES[i - 1].level))
+  const curNonBoss = curTemplate.filter(m => m.rarity !== 'boss').map(m => scaleMonsterToZone(m, ZONES[i].level))
   if (!prevNonBoss.length || !curNonBoss.length) continue
   const avg = (xs: Monster[]) => xs.reduce((s, m) => s + m.maxLife, 0) / xs.length
   const g = avg(curNonBoss) / avg(prevNonBoss)

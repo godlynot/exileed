@@ -337,7 +337,7 @@ function skillDamage(
     ? skill.baseDamageMax + weaponMax
     : rollDamage(skill.baseDamageMin + weaponMin, skill.baseDamageMax + weaponMax)
   const rawBase = Math.floor(rawBaseRoll * levelMultiplier * gemMultiplier)
-  const lightningPct = character.special.physToLightning ? character.special.physToLightning / 100 : 0
+  const lightningPct = Math.min(1, (character.special.physToLightning ?? 0) / 100)
   const baseAfterConversion = lightningPct > 0 ? Math.floor(rawBase * lightningPct) : 0
 
   const incPhys = (character.increasedPhysicalDamage + (supportMods.increased['inc_phys_damage_percent'] ?? 0) / 100)
@@ -361,7 +361,7 @@ function skillDamage(
     damage = physDamage + spellDamage
   } else {
     const raw = rawBase + (skill.damageType === 'fire' ? flatFire : skill.damageType === 'cold' ? flatCold : skill.damageType === 'lightning' ? flatLightning : 0)
-    const inc = skill.damageType === 'chaos' ? incSpell : (incSpell + incEle + 1)
+    const inc = skill.damageType === 'chaos' ? incSpell : (incSpell + incEle)
     const m = skill.damageType === 'chaos' ? moreSpell : moreSpell * moreEle
     damage = raw * (1 + inc) * m
   }
@@ -541,7 +541,7 @@ export function simulateTick(state: GameState): { state: GameState; events: Comb
   if (character.isAlive && combat.delayedDamageQueue.length > 0) {
     const tickDelayed = combat.delayedDamageQueue[0] ?? 0
     const nextLife = character.life - tickDelayed
-    character = { ...character, life: Math.max(1, nextLife) }
+    character = { ...character, life: nextLife }
     // Foreseen Doom delayed damage is treated as physical for the summary.
     combat = {
       ...combat,
@@ -882,7 +882,7 @@ export function simulateTick(state: GameState): { state: GameState; events: Comb
         }
         // Bulwark's Wrath: store portion of damage taken as flat phys
         if (character.special.bulwarksWrath) {
-          combat = { ...combat, marshal: { ...combat.marshal, bulwarkFlat: combat.marshal.bulwarkFlat + damageTaken * 0.1, bulwarkTicksRemaining: 3 * TICKS_PER_SECOND } }
+          combat = { ...combat, marshal: { ...combat.marshal, bulwarkFlat: damageTaken * 0.1, bulwarkTicksRemaining: 3 * TICKS_PER_SECOND } }
         }
       }
 
