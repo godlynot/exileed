@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, spyOn } from "bun:test";
-import { skillDamage, armourMitigation, applyResistance, hitChance, createCombatState } from "./combat.ts";
+import { skillDamage, armourMitigation, applyResistance, hitChance, createCombatState, processSkillHits, aggregateSupportModifiers } from "./combat.ts";
 import type { Character, Monster, Skill, EquippedSkill, CombatState } from "../types/game.ts";
 
 // --- Fixtures ---
@@ -239,5 +239,43 @@ describe("skillDamage regressions", () => {
 
     expect(without.nextEquipped.cooldownRemaining).toBe(10);
     expect(withSupport.nextEquipped.cooldownRemaining).toBeLessThan(10);
+  });
+
+  it("uses physical modifiers for elemental attacks and spell modifiers for elemental spells", () => {
+    const attackChar = makeCharacter({ increasedPhysicalDamage: 1.0, increasedSpellDamage: 0 });
+    const spellChar = makeCharacter({ increasedPhysicalDamage: 0, increasedSpellDamage: 1.0 });
+    const monster = makeCleanMonster();
+    const combat = makeCombat(monster);
+    const attackSkill = makeSkill({ id: "fire_attack", tags: ["attack", "fire", "melee"], damageType: "fire", baseDamageMin: 100, baseDamageMax: 100 });
+    const spellSkill = makeSkill({ id: "fire_spell", tags: ["spell", "fire"], damageType: "fire", baseDamageMin: 100, baseDamageMax: 100 });
+
+    // Attack should scale with increasedPhysicalDamage
+    expect(skillDamage(attackChar, makeEquippedSkill(attackSkill), attackSkill, monster, 0, combat).damage).toBe(200);
+    // Spell should scale with increasedSpellDamage
+    expect(skillDamage(spellChar, makeEquippedSkill(spellSkill), spellSkill, monster, 0, combat).damage).toBe(200);
+    // Attack should ignore spell damage
+    expect(skillDamage(spellChar, makeEquippedSkill(attackSkill), attackSkill, monster, 0, combat).damage).toBe(100);
+    // Spell should ignore physical damage
+    expect(skillDamage(attackChar, makeEquippedSkill(spellSkill), spellSkill, monster, 0, combat).damage).toBe(100);
+  });
+
+  it("combines multiple support 'more' modifiers multiplicatively", () => {
+    const mockSupports = [
+      { id: "more_1", name: "", description: "", allowedTags: ["attack" as const], modifiers: [{ stat: "inc_phys_damage_percent" as const, mode: "more" as const, value: 20 }] },
+      { id: "more_2", name: "", description: "", allowedTags: ["attack" as const], modifiers: [{ stat: "inc_phys_damage_percent" as const, mode: "more" as const, value: 20 }] },
+    ];
+    const result = aggregateSupportModifiers(mockSupports, ["more_1", "more_2"], makeCharacter());
+    expect(result.more["inc_phys_damage_percent"]).toBeCloseTo(1.44);
+  });
+
+  it("gains Momentum on hit when the character has momentum unlocked", () => {
+    const skill = makeSkill({ id: "strike", tags: ["attack", "physical", "melee"], baseDamageMin: 10, baseDamageMax: 10 });
+    const char = makeCharacter({ special: { momentum: true }, equippedSkills: [makeEquippedSkill(skill)] });
+    const monster = makeMonster({ life: 1000, maxLife: 1000 });
+    const combat = makeCombat(monster);
+
+    const result = processSkillHits(char, monster, combat);
+
+    expect(result.combat.momentum.stacks).toBeGreaterThan(0);
   });
 });

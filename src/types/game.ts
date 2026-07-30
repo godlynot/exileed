@@ -393,7 +393,7 @@ export const STAT_KEYS: StatKey[] = [
   'flat_life', 'flat_energy_shield', 'flat_armour', 'flat_evasion', 'flat_accuracy',
   'flat_phys_damage', 'flat_fire_damage', 'flat_cold_damage', 'flat_lightning_damage',
   'inc_phys_damage_percent', 'inc_spell_damage_percent', 'inc_ele_damage_percent',
-  'inc_attack_speed_percent', 'inc_crit_chance_percent', 'inc_crit_multi_percent',
+  'inc_attack_speed_percent', 'inc_cast_speed_percent', 'inc_crit_chance_percent', 'inc_crit_multi_percent',
   'inc_accuracy_percent',
   'inc_life_percent', 'inc_es_percent', 'inc_armour_percent', 'inc_evasion_percent',
   'es_recharge_rate_percent', 'phys_reduction_percent',

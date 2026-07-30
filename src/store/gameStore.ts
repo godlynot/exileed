@@ -105,6 +105,12 @@ function recalcCharacter(state: GameState, character: Character): Character {
   c = applyPassiveStats(c, state.passiveTree)
   c = applyAscendancyStats(c)
   c = applyDevOverrides(c)
+  // Ascendancy can change max life/ES; clamp current pools after all recalculation.
+  c = {
+    ...c,
+    life: Math.min(c.life, c.maxLife),
+    energyShield: Math.min(c.energyShield, c.maxEnergyShield),
+  }
   return c
 }
 

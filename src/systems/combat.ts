@@ -236,7 +236,7 @@ function supportsForSkill(equipped: EquippedSkill, skill: Skill): Support[] {
     .filter(s => !!s && s.allowedTags.some(tag => skill.tags.includes(tag)))
 }
 
-function aggregateSupportModifiers(supports: Support[], supportIds: string[], character: Character) {
+export function aggregateSupportModifiers(supports: Support[], supportIds: string[], character: Character) {
   const flat: Record<string, number> = {}
   const increased: Record<string, number> = {}
   const more: Record<string, number> = {}
@@ -247,7 +247,7 @@ function aggregateSupportModifiers(supports: Support[], supportIds: string[], ch
     for (const mod of support.modifiers) {
       if (mod.mode === 'flat') flat[mod.stat] = (flat[mod.stat] ?? 0) + mod.value * multiplier
       if (mod.mode === 'increased') increased[mod.stat] = (increased[mod.stat] ?? 0) + mod.value * multiplier
-      if (mod.mode === 'more') more[mod.stat] = (more[mod.stat] ?? 0) + mod.value * multiplier
+      if (mod.mode === 'more') more[mod.stat] = (more[mod.stat] ?? 1) * (1 + (mod.value * multiplier) / 100)
     }
   }
   return { flat, increased, more }
@@ -345,14 +345,14 @@ export function skillDamage(
   const rawBase = Math.floor(rawBaseRoll * levelMultiplier * gemMultiplier)
   const lightningPct = Math.min(1, (character.special.physToLightning ?? 0) / 100)
 
-  const incPhys = (character.increasedPhysicalDamage + (supportMods.increased['inc_phys_damage_percent'] ?? 0) / 100)
-  const morePhys = character.morePhysicalDamage * (1 + (supportMods.more['inc_phys_damage_percent'] ?? 0) / 100) * (character.special.moreDamageMultiplier ?? 1)
+  const incPhys = character.increasedPhysicalDamage + (supportMods.increased['inc_phys_damage_percent'] ?? 0) / 100
+  const morePhys = character.morePhysicalDamage * (supportMods.more['inc_phys_damage_percent'] ?? 1) * (character.special.moreDamageMultiplier ?? 1)
 
-  const incSpell = (character.increasedSpellDamage + (supportMods.increased['inc_spell_damage_percent'] ?? 0) / 100)
-  const moreSpell = character.moreSpellDamage * (1 + (supportMods.more['inc_spell_damage_percent'] ?? 0) / 100) * (character.special.moreDamageMultiplier ?? 1)
+  const incSpell = character.increasedSpellDamage + (supportMods.increased['inc_spell_damage_percent'] ?? 0) / 100
+  const moreSpell = character.moreSpellDamage * (supportMods.more['inc_spell_damage_percent'] ?? 1) * (character.special.moreDamageMultiplier ?? 1)
 
   const incEle = (supportMods.increased['inc_ele_damage_percent'] ?? 0) / 100
-  const moreEle = 1 + (supportMods.more['inc_ele_damage_percent'] ?? 0) / 100
+  const moreEle = supportMods.more['inc_ele_damage_percent'] ?? 1
 
   const monsterArmour = (monster.armour ?? 0) + monster.level * 2
 
@@ -382,8 +382,11 @@ export function skillDamage(
     damage = physDamage + spellDamage + chaosDamage
   } else {
     const raw = rawBase + (skill.damageType === 'fire' ? flatFire : skill.damageType === 'cold' ? flatCold : skill.damageType === 'lightning' ? flatLightning : 0)
-    const inc = skill.damageType === 'chaos' ? incSpell : (incSpell + incEle)
-    const m = skill.damageType === 'chaos' ? moreSpell : moreSpell * moreEle
+    const isAttack = skill.tags.includes('attack')
+    const baseInc = isAttack ? incPhys : incSpell
+    const baseMore = isAttack ? morePhys : moreSpell
+    const inc = skill.damageType === 'chaos' ? baseInc : baseInc + incEle
+    const m = skill.damageType === 'chaos' ? baseMore : baseMore * moreEle
     damage = raw * (1 + inc) * m
   }
 
@@ -477,7 +480,7 @@ interface SkillProcessResult {
   extraEvents: CombatEvent[]
 }
 
-function processSkillHits(character: Character, monster: Monster, combat: CombatState): SkillProcessResult {
+export function processSkillHits(character: Character, monster: Monster, combat: CombatState): SkillProcessResult {
   let totalDamage = 0
   let anyCrit = false
   let evaded = true
@@ -513,6 +516,11 @@ function processSkillHits(character: Character, monster: Monster, combat: Combat
   }
 
   character = { ...character, equippedSkills: nextEquipped }
+
+  // Momentum gain on hit (Warlord core mechanic)
+  if (!evaded && character.special.momentum) {
+    combat = { ...combat, momentum: gainMomentum(combat.momentum, 1, character) }
+  }
 
   const extraEvents: CombatEvent[] = leveledUp.map(l => {
     const gem = SKILLS[l.gemId] ?? SUPPORTS[l.gemId]
