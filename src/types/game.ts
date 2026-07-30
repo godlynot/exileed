@@ -350,6 +350,8 @@ export interface CombatState {
   }
   // M4.5 Plaguebringer Plaguewind carryover: ailments spread from the last killed monster
   plaguewindCarryover: AilmentInstance[]
+  // M4.5 Direct pack AoE carryover (Vanguard Blitz, Herald on-kill explosions)
+  packDamageCarryover: number
 }
 
 export type NodeType = 'small' | 'notable' | 'keystone' | 'root'
@@ -365,7 +367,7 @@ export type StatKey =
   | 'flat_phys_damage' | 'flat_fire_damage' | 'flat_cold_damage' | 'flat_lightning_damage'
   // Increased offensive
   | 'inc_phys_damage_percent' | 'inc_spell_damage_percent' | 'inc_ele_damage_percent'
-  | 'inc_attack_speed_percent' | 'inc_crit_chance_percent' | 'inc_crit_multi_percent'
+  | 'inc_attack_speed_percent' | 'inc_cast_speed_percent' | 'inc_crit_chance_percent' | 'inc_crit_multi_percent'
   | 'inc_accuracy_percent'
   // Increased defensive
   | 'inc_life_percent' | 'inc_es_percent' | 'inc_armour_percent' | 'inc_evasion_percent'

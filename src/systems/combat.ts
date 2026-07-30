@@ -68,6 +68,7 @@ export function hitChance(attackerAccuracy: number, defenderEvasion: number, sta
 }
 
 export function armourMitigation(armour: number, damage: number): number {
+  if (damage <= 0) return 0
   return armour / (armour + DAMAGE.ARMOUR_MITIGATION_DENOMINATOR * damage)
 }
 
@@ -104,6 +105,7 @@ export function createCombatState(monster: Monster): CombatState {
     virulent: { stacks: {}, septicemiaMultiplier: {}, calcifyAccumulator: {}, slow: {}, patientZeroTarget: null },
     monsterDebuffs: {},
     plaguewindCarryover: [],
+    packDamageCarryover: 0,
     damageTakenByType: { physical: 0, fire: 0, cold: 0, lightning: 0, chaos: 0 },
     deathSummary: null,
   }
@@ -316,7 +318,7 @@ export function skillDamage(
 } {
   const supports = supportsForSkill(equipped, skill)
   const supportMods = aggregateSupportModifiers(supports, equipped.supportIds, character)
-  const supportActionSpeed = (supportMods.increased['inc_attack_speed_percent'] ?? 0) / 100
+  const supportActionSpeed = ((supportMods.increased['inc_attack_speed_percent'] ?? 0) + (supportMods.increased['inc_cast_speed_percent'] ?? 0)) / 100
 
   const isHit = character.special.alwaysHit ? true : Math.random() <= hitChance(character.accuracy, monster.evasion, evasionStacks)
   if (!isHit) {
@@ -353,7 +355,6 @@ export function skillDamage(
   const moreEle = 1 + (supportMods.more['inc_ele_damage_percent'] ?? 0) / 100
 
   const monsterArmour = (monster.armour ?? 0) + monster.level * 2
-  const mitigation = armourMitigation(monsterArmour, rawBase)
 
   // Support specials
   const hasExtraProjectile = supports.some(s => s.special === 'extraProjectile') && skill.tags.includes('projectile')
@@ -372,7 +373,10 @@ export function skillDamage(
     const physicalPart = Math.floor(rawBase * (1 - totalConvert)) + flatPhys
     const lightningPart = Math.floor(rawBase * totalConvert * normLightning) + flatLightning
     const chaosPart = Math.floor(rawBase * totalConvert * normChaos)
-    const physDamage = physicalPart * (1 + incPhys) * morePhys * (1 - mitigation)
+    // Armour mitigation applies to the final scaled physical portion, not the raw base roll
+    const unmitigatedPhys = physicalPart * (1 + incPhys) * morePhys
+    const mitigation = armourMitigation(monsterArmour, unmitigatedPhys)
+    const physDamage = unmitigatedPhys * (1 - mitigation)
     const spellDamage = lightningPart * (1 + incSpell + incEle) * moreSpell * moreEle
     const chaosDamage = chaosPart * (1 + incSpell) * moreSpell
     damage = physDamage + spellDamage + chaosDamage
@@ -577,15 +581,52 @@ export function simulateTick(state: GameState): { state: GameState; events: Comb
   // Apply pending delayed damage from Fateseer Foreseen Doom at the start of the tick
   if (character.isAlive && combat.delayedDamageQueue.length > 0) {
     const tickDelayed = combat.delayedDamageQueue[0] ?? 0
-    const nextLife = character.life - tickDelayed
-    character = { ...character, life: nextLife }
-    // Foreseen Doom delayed damage is treated as physical for the summary.
+    let energyShield = character.energyShield
+    let life = character.life
+    let remaining = tickDelayed
+    if (energyShield > 0) {
+      const absorb = Math.min(energyShield, remaining)
+      energyShield -= absorb
+      remaining -= absorb
+    }
+    life -= remaining
+    character = { ...character, life, energyShield }
+    // Delayed damage interrupts ES recharge just like any other hit
     combat = {
       ...combat,
       delayedDamageQueue: combat.delayedDamageQueue.slice(1),
+      ticksSinceDamageTaken: 0,
       damageTakenByType: { ...combat.damageTakenByType, physical: combat.damageTakenByType.physical + tickDelayed },
     }
     events.push(makeEvent({ type: 'delayedDamageTick', targetId: character.id, damage: tickDelayed }))
+
+    if (character.life <= 0) {
+      character = { ...character, life: 0 }
+      character = applyDeathPenalty(character)
+      const deathSummary = combat.monster
+        ? {
+            monsterName: combat.monster.name,
+            monsterLevel: combat.monster.level,
+            monsterRarity: combat.monster.rarity,
+            monsterModifiers: (combat.monster.modifierIds ?? []).map(
+              id => MONSTER_MODIFIERS_BY_ID[id]?.displayName ?? id
+            ),
+            damageTaken: { ...combat.damageTakenByType },
+          }
+        : null
+      combat = {
+        ...combat,
+        isRespawning: true,
+        respawnTicks: character.respawnTimer,
+        delayedDamageQueue: [],
+        deathSummary,
+      }
+      events.push(makeEvent({ type: 'playerDied' }))
+      return {
+        state: { ...state, character, combat, zones, inventory, activeTrial, gamePhase },
+        events,
+      }
+    }
   }
 
   // Snapshot the active auras into combat state so all combat hooks read from the same source.
@@ -906,8 +947,16 @@ export function simulateTick(state: GameState): { state: GameState; events: Comb
 
       if (delayed > 0) {
         const perTick = delayed / (3 * TICKS_PER_SECOND)
-        const newEntries = Array.from({ length: 3 * TICKS_PER_SECOND }, () => perTick)
-        combat = { ...combat, delayedDamageQueue: [...combat.delayedDamageQueue, ...newEntries] }
+        const window = 3 * TICKS_PER_SECOND
+        const newQueue = [...combat.delayedDamageQueue]
+        for (let i = 0; i < window; i++) {
+          if (i < newQueue.length) {
+            newQueue[i] += perTick
+          } else {
+            newQueue.push(perTick)
+          }
+        }
+        combat = { ...combat, delayedDamageQueue: newQueue }
       }
 
       if (damageTaken > 0) {
@@ -1010,6 +1059,7 @@ export function simulateTick(state: GameState): { state: GameState; events: Comb
     if (character.special.blitz && isMaxMomentum(combat.momentum, character)) {
       const echoDamage = combat.lastDamageDealt
       events.push(makeEvent({ type: 'hitLanded', source: 'player', targetId: 'pack', damage: echoDamage, damageType: 'physical', crit: false }))
+      combat = { ...combat, packDamageCarryover: combat.packDamageCarryover + echoDamage }
     }
 
     // Unwavering Herald on-kill specials
@@ -1019,11 +1069,13 @@ export function simulateTick(state: GameState): { state: GameState; events: Comb
       if (activeAuras.includes('storms')) {
         const stormDamage = Math.max(1, Math.floor(character.level * 5 + character.basePhysicalDamageMax * 0.5))
         events.push(makeEvent({ type: 'hitLanded', source: 'player', targetId: 'pack', damage: stormDamage, damageType: 'lightning', crit: false }))
+        combat = { ...combat, packDamageCarryover: combat.packDamageCarryover + stormDamage }
       }
       // Herald of Judgment: detonate corpse for player-scaled splash (never % enemy max HP)
       if (activeAuras.includes('judgment')) {
         const detonationDamage = Math.max(1, Math.floor((character.basePhysicalDamageMin + character.basePhysicalDamageMax) * 0.5 * (1 + character.increasedPhysicalDamage) * character.morePhysicalDamage * (character.special.moreDamageMultiplier ?? 1)))
         events.push(makeEvent({ type: 'hitLanded', source: 'player', targetId: 'pack', damage: detonationDamage, damageType: 'fire', crit: false }))
+        combat = { ...combat, packDamageCarryover: combat.packDamageCarryover + detonationDamage }
       }
     }
 
@@ -1146,7 +1198,16 @@ export function simulateTick(state: GameState): { state: GameState; events: Comb
       if (combat.plaguewindCarryover.length > 0) {
         nextAilments[nextMonster.id] = [...(nextAilments[nextMonster.id] ?? []), ...combat.plaguewindCarryover]
       }
-      combat = { ...combat, monster: nextMonster, monsterLife: nextMonster.maxLife, virulent: { ...combat.virulent, patientZeroTarget: null }, ailments: nextAilments, plaguewindCarryover: [] }
+      const carryoverDamage = combat.packDamageCarryover
+      combat = {
+        ...combat,
+        monster: nextMonster,
+        monsterLife: Math.max(1, nextMonster.maxLife - carryoverDamage),
+        virulent: { ...combat.virulent, patientZeroTarget: null },
+        ailments: nextAilments,
+        plaguewindCarryover: [],
+        packDamageCarryover: 0,
+      }
       events.push(makeEvent({
         type: 'monsterSpawned',
         monsterId: nextMonster.id,

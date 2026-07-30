@@ -204,4 +204,40 @@ describe("skillDamage regressions", () => {
 
     expect(result.damage).toBe(100);
   });
+
+  it("armour mitigation applies to scaled physical damage, not raw base", () => {
+    // High increased/more means the unmitigated hit is large; armour should be evaluated against that.
+    const char = makeCharacter({
+      level: 10,
+      basePhysicalDamageMin: 20,
+      basePhysicalDamageMax: 20,
+      increasedPhysicalDamage: 1.0,
+      morePhysicalDamage: 2,
+    });
+    const monster = makeMonster({ level: 0, armour: 500, life: 10000, maxLife: 10000 });
+    const combat = makeCombat(monster);
+    const skill = makeSkill({ id: "heavy_strike", tags: ["attack", "physical", "melee"], baseDamageMin: 50, baseDamageMax: 50 });
+
+    const result = skillDamage(char, makeEquippedSkill(skill), skill, monster, 0, combat);
+
+    expect(result.damage).toBeGreaterThan(0);
+    expect(Number.isNaN(result.damage)).toBe(false);
+    // rawBase  50 * 1.45 = 72; with weapon flat 20 -> physicalPart = 92.
+    // unmitigatedPhys = 92 * (1+1) * 2 = 368, so mitigation is evaluated against ~368.
+    // Old code evaluated mitigation against rawBase ~72, so damage should be higher now.
+    expect(result.damage).toBeGreaterThan(200);
+  });
+
+  it("faster_casting support reduces the returned cooldown", () => {
+    const char = makeCharacter();
+    const monster = makeCleanMonster();
+    const combat = makeCombat(monster);
+    const skill = makeSkill({ id: "spell", tags: ["spell", "fire"], damageType: "fire", baseDamageMin: 10, baseDamageMax: 10, cooldownTicks: 10 });
+
+    const without = skillDamage(char, makeEquippedSkill(skill), skill, monster, 0, combat);
+    const withSupport = skillDamage(char, makeEquippedSkill(skill, ["faster_casting"]), skill, monster, 0, combat);
+
+    expect(without.nextEquipped.cooldownRemaining).toBe(10);
+    expect(withSupport.nextEquipped.cooldownRemaining).toBeLessThan(10);
+  });
 });

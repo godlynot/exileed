@@ -48,7 +48,7 @@ export const SUPPORTS: Record<string, Support> = {
     name: 'Faster Casting',
     description: 'Reduces the cooldown of the linked skill.',
     allowedTags: ['spell', 'attack'],
-    modifiers: [{ stat: 'inc_attack_speed_percent', mode: 'increased', value: 15 }],
+    modifiers: [{ stat: 'inc_cast_speed_percent', mode: 'increased', value: 15 }],
   },
   ailment_magnitude: {
     id: 'ailment_magnitude',
