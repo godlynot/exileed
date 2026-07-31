@@ -114,7 +114,7 @@ export const MONSTERS: Record<string, Monster> = {
     rarity: 'normal',
   },
 
-  // Former elite; now a normal template that can roll Warleader as a modifier.
+  // Act 1 named elite: salt-crowned revenant with elevated unique drop chance.
   salt_crowned_revenant: {
     id: 'salt_crowned_revenant',
     name: 'Salt-Crowned Revenant',
@@ -131,6 +131,9 @@ export const MONSTERS: Record<string, Monster> = {
     experienceReward: 28,
     goldReward: 10,
     rarity: 'normal',
+    dropBonuses: {
+      uniqueChance: 0.02,
+    },
   },
 
   shore_warden: {
@@ -282,7 +285,7 @@ export const MONSTERS: Record<string, Monster> = {
     rarity: 'normal',
   },
 
-  // Former elite; now a normal template that can roll Warleader as a modifier.
+  // Act 2 named elite: forge-marked zealot with elevated rare drop chance.
   forge_marked_zealot: {
     id: 'forge_marked_zealot',
     name: 'Forge-Marked Zealot',
@@ -299,6 +302,9 @@ export const MONSTERS: Record<string, Monster> = {
     experienceReward: 85,
     goldReward: 13,
     rarity: 'normal',
+    dropBonuses: {
+      rareChance: 0.04,
+    },
   },
 
   cinder_throne_warden: {
@@ -434,7 +440,7 @@ export const MONSTERS: Record<string, Monster> = {
     rarity: 'normal',
   },
 
-  // Former elite; now a normal template that can roll Warleader as a modifier.
+  // Act 3 named elite: spire-anointed with extra drop chance.
   spire_anointed: {
     id: 'spire_anointed',
     name: 'Spire-Anointed',
@@ -451,6 +457,9 @@ export const MONSTERS: Record<string, Monster> = {
     experienceReward: 180,
     goldReward: 28,
     rarity: 'normal',
+    dropBonuses: {
+      extraDropChance: 0.25,
+    },
   },
 
   spire_crown: {

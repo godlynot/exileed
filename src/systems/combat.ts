@@ -15,7 +15,7 @@ import type {
 } from '../types/game.ts'
 import { DAMAGE, MONSTER, RECOVERY, TICKS_PER_SECOND, TICK_RATE, monsterScalingMultiplier } from '../data/balance.ts'
 import { applyDeathPenalty, addExperience } from './xp.ts'
-import { dropItem, recalculateCharacterFromEquipment } from './items.ts'
+import { dropItem, recalculateCharacterFromEquipment, type DropModifiers } from './items.ts'
 import { applyPassiveStats, applyAscendancyStats } from './passives.ts'
 import { MONSTERS } from '../data/monsters.ts'
 import { SKILLS } from '../data/skills.ts'
@@ -108,6 +108,8 @@ export function createCombatState(monster: Monster): CombatState {
     packDamageCarryover: 0,
     damageTakenByType: { physical: 0, fire: 0, cold: 0, lightning: 0, chaos: 0 },
     deathSummary: null,
+    packSizeRemaining: 0,
+    packNamedEliteCount: 0,
   }
 }
 
@@ -138,9 +140,45 @@ function scaleMonster(monster: Monster, zone: Zone): Monster {
   }
 }
 
-function createMonster(zone: Zone): Monster {
-  const pool = zone.monsterIds.length > 0 ? zone.monsterIds : zone.monsterId ? [zone.monsterId] : []
-  const id = pool[Math.floor(Math.random() * pool.length)]
+function rollPackSize(zone: Zone): number {
+  // Pack size 1-4, weighted toward smaller packs earlier and larger packs later.
+  const levelWeight = Math.min(1, (zone.level - 1) / 60)
+  const roll = Math.random()
+  const fourChance = 0.05 + levelWeight * 0.15
+  const threeChance = 0.15 + levelWeight * 0.15
+  const twoChance = 0.35 + levelWeight * 0.1
+  if (roll < fourChance) return 4
+  if (roll < fourChance + threeChance) return 3
+  if (roll < fourChance + threeChance + twoChance) return 2
+  return 1
+}
+
+function maxNamedElitesForZone(zone: Zone): number {
+  // Acts 1-7: at most 1 named elite per pack. Act 8+ and maps: up to 2.
+  return zone.act >= 8 ? 2 : 1
+}
+
+function rollEliteRarity(): Exclude<MonsterRarity, 'normal' | 'boss'> {
+  // Biased toward rare (60% rare, 40% magic).
+  return Math.random() < 0.6 ? 'rare' : 'magic'
+}
+
+function createMonster(zone: Zone, canSpawnNamedElite: boolean): Monster {
+  const isNamedEliteSpawn =
+    canSpawnNamedElite &&
+    zone.eliteTemplateIds &&
+    zone.eliteTemplateIds.length > 0 &&
+    zone.eliteChance > 0 &&
+    Math.random() < zone.eliteChance
+
+  let id: string
+  if (isNamedEliteSpawn) {
+    id = zone.eliteTemplateIds![Math.floor(Math.random() * zone.eliteTemplateIds!.length)]
+  } else {
+    const pool = zone.monsterIds.length > 0 ? zone.monsterIds : zone.monsterId ? [zone.monsterId] : []
+    id = pool[Math.floor(Math.random() * pool.length)]
+  }
+
   const template = MONSTERS[id]
   if (!template) {
     throw new Error(`Unknown monster id: ${id}`)
@@ -153,8 +191,13 @@ function createMonster(zone: Zone): Monster {
     return monster
   }
 
-  // Determine rarity: normal / magic / rare.
-  const rarity: MonsterRarity = zone.eliteChance > 0 ? rollRarity(zone.level) : 'normal'
+  // Determine rarity: named elites are guaranteed magic+, others roll normally.
+  let rarity: MonsterRarity
+  if (isNamedEliteSpawn) {
+    rarity = rollEliteRarity()
+  } else {
+    rarity = zone.eliteChance > 0 ? rollRarity(zone.level) : 'normal'
+  }
   const modifiers = rarity !== 'normal' ? rollModifiers(rarity, zone.level) : []
 
   // Apply modifiers in order: additive first, then multiplicative.
@@ -193,6 +236,7 @@ function createMonster(zone: Zone): Monster {
   monster = {
     ...monster,
     rarity,
+    isNamedElite: isNamedEliteSpawn,
     modifierIds: modifiers.map(m => m.id),
     life: Math.floor(monster.life * lifeMult),
     maxLife: Math.floor(monster.maxLife * lifeMult),
@@ -211,6 +255,30 @@ function createMonster(zone: Zone): Monster {
   }
 
   return monster
+}
+
+function spawnMonster(zone: Zone, combat: CombatState): { monster: Monster; combat: CombatState } {
+  let packSizeRemaining = combat.packSizeRemaining
+  let packNamedEliteCount = combat.packNamedEliteCount
+
+  // Start a new pack when the previous one is exhausted.
+  if (packSizeRemaining <= 0) {
+    packSizeRemaining = rollPackSize(zone)
+    packNamedEliteCount = 0
+  }
+
+  const maxElites = maxNamedElitesForZone(zone)
+  const canSpawnNamedElite = packNamedEliteCount < maxElites
+  const monster = createMonster(zone, canSpawnNamedElite)
+
+  if (monster.isNamedElite) {
+    packNamedEliteCount++
+  }
+
+  return {
+    monster,
+    combat: { ...combat, packSizeRemaining, packNamedEliteCount },
+  }
 }
 
 export function applyResistance(resistance: number, damage: number, cap: number = DAMAGE.RESISTANCE_CAP): number {
@@ -728,9 +796,10 @@ export function simulateTick(state: GameState): { state: GameState; events: Comb
   // Ensure a monster exists
   if (!combat.monster) {
     if (!zone) return { state, events }
-    const monster = createMonster(zone)
+    const spawnResult = spawnMonster(zone, combat)
+    const monster = spawnResult.monster
     combat = {
-      ...combat,
+      ...spawnResult.combat,
       monster,
       monsterLife: monster.maxLife,
       damageTakenByType: { physical: 0, fire: 0, cold: 0, lightning: 0, chaos: 0 },
@@ -1126,15 +1195,24 @@ export function simulateTick(state: GameState): { state: GameState; events: Comb
     if (zone) {
       const hasGold = hasHerald(combat, 'gold')
       const unwavering = character.special.unwaveringDeclaration
-      const dropModifiers = hasGold
-        ? {
-            rarityBonus: { rare: unwavering ? 0.1 : 0.05, magic: unwavering ? 0.2 : 0.1 },
-            extraDropChance: unwavering ? 0.5 : 0.25,
-          }
-        : undefined
+      const namedEliteBonuses = monster.dropBonuses
+      const rarityBonus = {
+        rare: (hasGold ? (unwavering ? 0.1 : 0.05) : 0) + (namedEliteBonuses?.rareChance ?? 0),
+        magic: hasGold ? (unwavering ? 0.2 : 0.1) : 0,
+      }
+      const extraDropChance =
+        (hasGold ? (unwavering ? 0.5 : 0.25) : 0) + (namedEliteBonuses?.extraDropChance ?? 0)
+      const dropModifiers: DropModifiers = {
+        rarityBonus,
+        extraDropChance,
+      }
       const drops = [dropItem(zone.level, dropModifiers)]
-      if (dropModifiers && Math.random() < dropModifiers.extraDropChance) {
+      if (Math.random() < extraDropChance) {
         drops.push(dropItem(zone.level, dropModifiers))
+      }
+      // Named elite unique chance (no-op until unique items exist)
+      if (namedEliteBonuses?.uniqueChance && Math.random() < namedEliteBonuses.uniqueChance) {
+        drops.push(dropItem(zone.level, { rarityBonus, extraDropChance: 0, forceRarity: 'unique' }))
       }
       for (const dropped of drops) {
         if (!dropped) continue
@@ -1200,7 +1278,10 @@ export function simulateTick(state: GameState): { state: GameState; events: Comb
 
     // Spawn next monster
     if (zone) {
-      const nextMonster = createMonster(zone)
+      // Advance pack state when a monster is killed.
+      const packSizeRemaining = Math.max(0, combat.packSizeRemaining - 1)
+      const spawnResult = spawnMonster(zone, { ...combat, packSizeRemaining })
+      const nextMonster = spawnResult.monster
       const nextAilments: Record<string, AilmentInstance[]> = { ...combat.ailments }
       // Plaguewind carryover: DOTs from the last killed monster infect the next one
       if (combat.plaguewindCarryover.length > 0) {
@@ -1208,7 +1289,7 @@ export function simulateTick(state: GameState): { state: GameState; events: Comb
       }
       const carryoverDamage = combat.packDamageCarryover
       combat = {
-        ...combat,
+        ...spawnResult.combat,
         monster: nextMonster,
         monsterLife: Math.max(1, nextMonster.maxLife - carryoverDamage),
         virulent: { ...combat.virulent, patientZeroTarget: null },

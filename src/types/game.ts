@@ -195,6 +195,13 @@ export interface MonsterModifier {
   }
 }
 
+export interface MonsterDropBonuses {
+  goldMultiplier?: number
+  uniqueChance?: number
+  rareChance?: number
+  extraDropChance?: number
+}
+
 export interface Monster {
   id: string
   name: string
@@ -216,6 +223,10 @@ export interface Monster {
   aura?: {
     nearbyAlliesDamagePercent: number
   }
+  // True if this monster was spawned through the named-elite path
+  isNamedElite?: boolean
+  // Drop bonuses specific to this monster (e.g. named elites)
+  dropBonuses?: MonsterDropBonuses
   // Optional phase thresholds for bosses
   phases?: {
     healthPercent: number
@@ -233,6 +244,8 @@ export interface Zone {
   // Legacy single-monster fallback; prefer monsterIds pool
   monsterId?: string
   monsterIds: string[]
+  // Named-elite templates that can spawn through the elite path in this zone
+  eliteTemplateIds?: string[]
   packSize: number
   eliteChance: number
   killProgress: number // 0-100%
@@ -352,6 +365,9 @@ export interface CombatState {
   plaguewindCarryover: AilmentInstance[]
   // M4.5 Direct pack AoE carryover (Vanguard Blitz, Herald on-kill explosions)
   packDamageCarryover: number
+  // Pack state for named-elite spawn rules
+  packSizeRemaining: number
+  packNamedEliteCount: number
 }
 
 export type NodeType = 'small' | 'notable' | 'keystone' | 'root'

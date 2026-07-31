@@ -544,9 +544,11 @@ export function applyOrb(item: Item, currencyId: string): Item {
 export interface DropModifiers {
   rarityBonus?: { rare: number; magic: number }
   extraDropChance?: number
+  forceRarity?: ItemRarity
 }
 
 export function determineDropRarity(zoneLevel: number, modifiers: DropModifiers = {}): ItemRarity {
+  if (modifiers.forceRarity) return modifiers.forceRarity
   const roll = Math.random()
   const bonus = modifiers.rarityBonus ?? { rare: 0, magic: 0 }
   const rareChance = 0.03 + zoneLevel * 0.002 + bonus.rare

@@ -185,6 +185,8 @@ function createInitialCombat(zone: Zone): CombatState {
     packDamageCarryover: 0,
     damageTakenByType: { physical: 0, fire: 0, cold: 0, lightning: 0, chaos: 0 },
     deathSummary: null,
+    packSizeRemaining: 0,
+    packNamedEliteCount: 0,
   }
 }
 
@@ -533,6 +535,8 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
         momentum: createMomentumState(),
         herald: { active: [], tideRamp: 0, hitTargets: [] },
         marshal: { army: null, bulwarkFlat: 0, bulwarkTicksRemaining: 0 },
+        packSizeRemaining: 0,
+        packNamedEliteCount: 0,
         delayedDamageQueue: [],
         ailments: {},
         virulent: { stacks: {}, septicemiaMultiplier: {}, calcifyAccumulator: {}, slow: {}, patientZeroTarget: null },
