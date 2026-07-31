@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, spyOn } from "bun:test";
-import { skillDamage, armourMitigation, applyResistance, hitChance, createCombatState, processSkillHits, aggregateSupportModifiers, simulateTick } from "./combat.ts";
-import type { Character, Monster, Skill, EquippedSkill, CombatState, GameState } from "../types/game.ts";
+import { skillDamage, armourMitigation, applyResistance, hitChance, createCombatState, processSkillHits, aggregateSupportModifiers, simulateTick, spawnMonster } from "./combat.ts";
+import type { Character, Monster, Skill, EquippedSkill, CombatState, GameState, Zone } from "../types/game.ts";
 
 // --- Fixtures ---
 
@@ -358,5 +358,94 @@ describe("combat simulation regressions", () => {
     expect(current.character.energyShield).toBeGreaterThan(0);
 
     randomMock.mockRestore();
+  });
+});
+
+describe("pack and named-elite system", () => {
+  function makeZone(overrides: Partial<Zone> = {}): Zone {
+    return {
+      id: "test_zone",
+      name: "Test Zone",
+      act: 1,
+      level: 2,
+      monsterIds: ["drowned_corsair", "brinewretch"],
+      eliteTemplateIds: ["salt_crowned_revenant"],
+      eliteChance: 0.08,
+      killProgress: 0,
+      killsRequired: 10,
+      unlocked: true,
+      ...overrides,
+    } as Zone;
+  }
+
+  it("rolls a pack size between 1 and 4 when a new pack starts", () => {
+    const zone = makeZone({ eliteChance: 0 });
+    const combat = makeCombat();
+    for (let i = 0; i < 50; i++) {
+      const { combat: nextCombat } = spawnMonster(zone, { ...combat, packSizeRemaining: 0 });
+      expect(nextCombat.packSizeRemaining).toBeGreaterThanOrEqual(1);
+      expect(nextCombat.packSizeRemaining).toBeLessThanOrEqual(4);
+    }
+  });
+
+  it("preserves pack state across consecutive spawns when the pack is not exhausted", () => {
+    const zone = makeZone({ eliteChance: 0 });
+    const combat = makeCombat();
+    const first = spawnMonster(zone, { ...combat, packSizeRemaining: 0 });
+    expect(first.combat.packSizeRemaining).toBeGreaterThanOrEqual(1);
+
+    const second = spawnMonster(zone, { ...combat, packSizeRemaining: first.combat.packSizeRemaining });
+    expect(second.combat.packSizeRemaining).toBe(first.combat.packSizeRemaining);
+    expect(second.combat.packNamedEliteCount).toBe(first.combat.packNamedEliteCount);
+  });
+
+  it("caps named elites at 1 per pack for acts 1-7 and 2 for act 8+", () => {
+    const lowActZone = makeZone({ act: 3, level: 20, eliteChance: 1 });
+    const highActZone = makeZone({ act: 8, level: 60, eliteChance: 1 });
+    const randomMock = spyOn(Math, "random").mockReturnValue(0);
+
+    // Low act: at most 1 named elite per pack.
+    let combat = makeCombat();
+    let elites = 0;
+    for (let i = 0; i < 4; i++) {
+      const result = spawnMonster(lowActZone, combat);
+      if (result.monster.isNamedElite) elites++;
+      combat = result.combat;
+    }
+    expect(elites).toBeLessThanOrEqual(1);
+
+    // High act: at most 2 named elites per pack.
+    elites = 0;
+    combat = { ...makeCombat(), packSizeRemaining: 0, packNamedEliteCount: 0 };
+    for (let i = 0; i < 4; i++) {
+      const result = spawnMonster(highActZone, combat);
+      if (result.monster.isNamedElite) elites++;
+      combat = result.combat;
+    }
+    expect(elites).toBeLessThanOrEqual(2);
+
+    randomMock.mockRestore();
+  });
+
+  it("named elites are drawn from the zone's eliteTemplateIds and are at least magic rarity", () => {
+    const zone = makeZone({ eliteTemplateIds: ["salt_crowned_revenant"], eliteChance: 1 });
+    const randomMock = spyOn(Math, "random").mockReturnValue(0);
+    const combat = makeCombat();
+    const result = spawnMonster(zone, { ...combat, packSizeRemaining: 0 });
+
+    expect(result.monster.isNamedElite).toBe(true);
+    expect(result.monster.id).toBe("salt_crowned_revenant");
+    expect(result.monster.rarity).toMatch(/^(magic|rare)$/);
+
+    randomMock.mockRestore();
+  });
+
+  it("does not spawn a named elite when the elite chance roll fails", () => {
+    const zone = makeZone({ eliteChance: 0 });
+    const combat = makeCombat();
+    const result = spawnMonster(zone, { ...combat, packSizeRemaining: 0 });
+
+    expect(result.monster.isNamedElite).toBeFalsy();
+    expect(result.monster.rarity).toBe("normal");
   });
 });

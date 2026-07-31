@@ -246,7 +246,6 @@ export interface Zone {
   monsterIds: string[]
   // Named-elite templates that can spawn through the elite path in this zone
   eliteTemplateIds?: string[]
-  packSize: number
   eliteChance: number
   killProgress: number // 0-100%
   killsRequired: number

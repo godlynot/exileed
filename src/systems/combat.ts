@@ -257,7 +257,7 @@ function createMonster(zone: Zone, canSpawnNamedElite: boolean): Monster {
   return monster
 }
 
-function spawnMonster(zone: Zone, combat: CombatState): { monster: Monster; combat: CombatState } {
+export function spawnMonster(zone: Zone, combat: CombatState): { monster: Monster; combat: CombatState } {
   let packSizeRemaining = combat.packSizeRemaining
   let packNamedEliteCount = combat.packNamedEliteCount
 
