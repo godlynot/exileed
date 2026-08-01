@@ -34,15 +34,16 @@ export function OfflineProgressOverlay() {
 
     let cancelled = false
     const snapshot = useGameStore.getState()
+    // Defer one frame so the overlay paints before the sim's first chunk runs.
     const timer = setTimeout(() => {
-      if (cancelled) return
-      const result = simulateOfflineProgress(snapshot, offlineSeconds, p => {
+      simulateOfflineProgress(snapshot, offlineSeconds, p => {
         if (!cancelled) setProgress(p)
+      }).then(result => {
+        if (cancelled) return
+        setProgress(1)
+        applyOfflineProgress(result.state, result.summary)
+        setSimulated(true)
       })
-      if (cancelled) return
-      setProgress(1)
-      applyOfflineProgress(result.state, result.summary)
-      setSimulated(true)
     }, 120)
 
     return () => {

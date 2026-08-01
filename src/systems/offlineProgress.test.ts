@@ -32,20 +32,20 @@ describe('computeOfflineSeconds', () => {
 })
 
 describe('simulateOfflineProgress', () => {
-  it('returns a zero summary for zero seconds', () => {
+  it('returns a zero summary for zero seconds', async () => {
     const state = createInitialState('warlord')
-    const result = simulateOfflineProgress(state, 0)
+    const result = await simulateOfflineProgress(state, 0)
     expect(result.summary.xpGained).toBe(0)
     expect(result.summary.kills).toBe(0)
     expect(result.summary.seconds).toBe(0)
     expect(result.state).toBe(state)
   })
 
-  it('advances the game forward and reports rewards for an hour away', () => {
+  it('advances the game forward and reports rewards for an hour away', async () => {
     const state = createInitialState('warlord')
     state.gamePhase = 'playing'
     const beforeTicks = state.tickCounter
-    const result = simulateOfflineProgress(state, 3600)
+    const result = await simulateOfflineProgress(state, 3600)
 
     // The sim actually ran: tick counter advanced and combat progressed
     expect(result.state.tickCounter).toBeGreaterThan(beforeTicks)
@@ -56,11 +56,11 @@ describe('simulateOfflineProgress', () => {
     expect(result.summary.xpGained).toBeGreaterThanOrEqual(0)
   })
 
-  it('reports chunk progress through the callback', () => {
+  it('reports chunk progress through the callback', async () => {
     const state = createInitialState('warlord')
     state.gamePhase = 'playing'
     const progresses: number[] = []
-    simulateOfflineProgress(state, 3600, p => progresses.push(p))
+    await simulateOfflineProgress(state, 3600, p => progresses.push(p))
     expect(progresses.length).toBeGreaterThan(0)
     expect(progresses[progresses.length - 1]).toBe(1)
   })

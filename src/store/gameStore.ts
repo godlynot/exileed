@@ -377,12 +377,16 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
   },
 
   applyOfflineProgress: (nextState: GameState, summary: OfflineSummary) => {
-    set(() => ({
+    const stamped = {
       ...nextState,
       offlineSummary: summary,
       offlineSeconds: 0,
       lastSaveTime: Date.now(),
-    }))
+    }
+    set(() => stamped)
+    // Persist immediately so the credited offline time is never granted twice
+    // if the tab is closed before the next randomized autosave.
+    saveGame(stamped)
   },
 
   dismissOfflineProgress: () => {
