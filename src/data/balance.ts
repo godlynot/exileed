@@ -4,6 +4,8 @@ export const TICK_RATE = 400 // ms per tick (2.5 ticks/sec)
 export const TICKS_PER_SECOND = 2.5
 export const OFFLINE_PROGRESS_MAX_HOURS = 8
 export const OFFLINE_PROGRESS_CHUNK_HOURS = 1
+// Don't show the offline overlay for gaps under this threshold (e.g. quick reloads)
+export const OFFLINE_PROGRESS_MIN_SECONDS = 60
 
 export const CHARACTER = {
   MAX_LEVEL: 90,

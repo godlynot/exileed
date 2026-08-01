@@ -21,7 +21,7 @@ This file captures the full game spec, confirmed decisions, proposed original na
 | Game title | **Rift Idler** |
 | Elemental resistances | **Keep Fire / Cold / Lightning / Chaos separate** (load-bearing gearing loop) |
 | Passive tree rendering | **SVG-based**. Konva/react-konva are pending removal. |
-| Offline progress | **Constants defined** but loading-overlay simulation not wired yet |
+| Offline progress | **Wired**: boot overlay simulates away-time (capped 8h, chunked hourly) via real combat ticks |
 | Integrations | **None** — strictly client-side as specified |
 | ES recharge | **Delay-based**: 3 seconds without damage, then 25% ES per second |
 | Ascendancies | **Keep 2 per class** (core build-variety system) |
@@ -127,7 +127,7 @@ The user explicitly rejected cutting load-bearing systems. The following reduce 
 ### M5 — Complete Campaign ✅
 - [x] Complete campaign zones 4–5 (Crimson Swamps, Cursed Catacombs)
 - [x] Complete campaign zones 6–8 (Frostbound Peaks, The Rotting Deep, Halls of Judgment)
-- [ ] Wire offline progress on startup
+- [x] Wire offline progress on startup (offline overlay simulates away-time capped at 8h, chunked by hour)
 - [x] Call `loadGame()` on app boot
 - [ ] Implement party/minion system so Herald auras and Marshal armies target the whole party set
 - [ ] Nexus endgame / Rift Crystals

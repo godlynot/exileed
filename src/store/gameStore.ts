@@ -11,6 +11,8 @@ import { applyPassiveStats, applyAscendancyStats, allocateNode, refundNode } fro
 import { simulateTick, spawnMonster } from '../systems/combat.ts'
 import { createMomentumState } from '../systems/momentum.ts'
 import { saveGame, loadGame, exportSave as exportSaveString, importSave } from '../systems/save.ts'
+import { computeOfflineSeconds } from '../systems/offlineProgress.ts'
+import type { OfflineSummary } from '../types/game.ts'
 import { BASE_ITEMS, STARTER_ITEMS } from '../data/items.ts'
 import { createItem, applyOrb, recalculateCharacterFromEquipment } from '../systems/items.ts'
 
@@ -225,6 +227,8 @@ export function createInitialState(classId: ClassId = 'warlord'): GameState {
 
 interface GameActions {
   tick: () => void
+  applyOfflineProgress: (state: GameState, summary: OfflineSummary) => void
+  dismissOfflineProgress: () => void
   selectZone: (zoneId: string) => void
   equipItem: (item: Item) => void
   unequipItem: (slot: keyof Equipment) => void
@@ -255,12 +259,16 @@ interface GameActions {
 function getInitialState(): GameState {
   const loaded = loadGame()
   if (loaded) {
+    // Detect offline time from the last save stamp; the overlay consumes it on boot.
+    const offlineSeconds = computeOfflineSeconds(loaded.lastSaveTime ?? 0)
     // Preserve the loaded phase; default to class-select if missing
     return {
       ...loaded,
       gamePhase: loaded.gamePhase ?? 'class-select',
       tickCounter: loaded.tickCounter ?? 0,
       previousZoneId: loaded.previousZoneId ?? null,
+      offlineSeconds: offlineSeconds > 0 ? offlineSeconds : 0,
+      offlineSummary: null,
     }
   }
   return createInitialState('warlord')
@@ -366,6 +374,23 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
 
   exportSave: () => {
     return exportSaveString(get())
+  },
+
+  applyOfflineProgress: (nextState: GameState, summary: OfflineSummary) => {
+    set(() => ({
+      ...nextState,
+      offlineSummary: summary,
+      offlineSeconds: 0,
+      lastSaveTime: Date.now(),
+    }))
+  },
+
+  dismissOfflineProgress: () => {
+    set(state => ({
+      ...state,
+      offlineSummary: null,
+      offlineSeconds: 0,
+    }))
   },
 
   importSave: (data: string) => {

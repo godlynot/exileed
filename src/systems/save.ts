@@ -5,7 +5,9 @@ export const SAVE_VERSION = 5
 export const SAVE_KEY = 'riftidler_save_v4'
 
 export function serializeSave(state: GameState): string {
-  return btoa(JSON.stringify({ ...state, saveVersion: SAVE_VERSION, lastSaveTime: Date.now() }))
+  // Offline progress fields are runtime-only (computed on boot), never persisted.
+  const { offlineSeconds: _offlineSeconds, offlineSummary: _offlineSummary, ...persistable } = state
+  return btoa(JSON.stringify({ ...persistable, saveVersion: SAVE_VERSION, lastSaveTime: Date.now() }))
 }
 
 function migrateSave(parsed: Record<string, unknown>): Partial<GameState> {

@@ -581,6 +581,15 @@ export interface Trial {
   rewardAscendancyPoints: number
 }
 
+export interface OfflineSummary {
+  seconds: number
+  xpGained: number
+  goldGained: number
+  kills: number
+  levelsGained: number
+  itemsFound: number
+}
+
 export interface GameState {
   character: Character
   zones: Zone[]
@@ -598,6 +607,10 @@ export interface GameState {
   activeTrial: Trial | null
   // Monotonic tick counter for gameplay timers (advances every simulateTick)
   tickCounter: number
+  // Offline progress: seconds away computed on boot (0 = none), and the granted
+  // summary once the loading-overlay simulation completes. Never persisted.
+  offlineSeconds?: number
+  offlineSummary?: OfflineSummary | null
 }
 
 export interface DroppedItem {

@@ -15,13 +15,18 @@ import { CraftingPanel } from './components/CraftingPanel.tsx'
 import { PassiveTreePanel } from './components/PassiveTreePanel.tsx'
 import { AscendancyTree } from './components/AscendancyTree.tsx'
 import { SkillsPanel } from './components/SkillsPanel.tsx'
+import { OfflineProgressOverlay } from './components/OfflineProgressOverlay.tsx'
 import { ASCENDANCIES, TRIALS } from './data/ascendancies.ts'
 
 type Tab = 'zone' | 'inventory' | 'equipment' | 'crafting' | 'tree' | 'ascendancy' | 'skills' | 'settings'
 
 function App() {
   const tick = useGameStore(state => state.tick)
-  useGameLoop(tick)
+  const offlineSeconds = useGameStore(state => state.offlineSeconds)
+  const offlineSummary = useGameStore(state => state.offlineSummary)
+  // Pause the live game loop while the offline overlay is simulating/showing rewards
+  const offlineActive = (offlineSeconds ?? 0) > 0 || !!offlineSummary
+  useGameLoop(offlineActive ? () => {} : tick)
 
   const character = useGameStore(state => state.character)
   const gamePhase = useGameStore(state => state.gamePhase)
@@ -56,6 +61,10 @@ function App() {
     () => Object.keys(groupedZones).map(Number).sort((a, b) => a - b),
     [groupedZones]
   )
+
+  if (offlineActive) {
+    return <OfflineProgressOverlay />
+  }
 
   if (gamePhase === 'class-select') {
     return <ClassSelection />
