@@ -140,6 +140,48 @@ const PackMonsterItem = memo(function PackMonsterItem({ member, index, isFront, 
   )
 })
 
+/** Icon/card sizes in px that mirror PackMonsterItem's Tailwind classes. */
+export const LANE_ICON_NORMAL = 48 // w-12
+const LANE_ICON_COMPACT = 36 // w-9
+const LANE_CARD_MAX = 80 // max-w-[5rem]
+
+/** Compact cards are used for large swarms (7-8 members). */
+export function isCompactPack(packSize: number): boolean {
+  return packSize > 6
+}
+
+/** Width of the monster container: the lane CSS is left-[30%] right-5 (right-5 = 20px). */
+export function laneContainerWidth(laneWidth: number): number {
+  return Math.max(0, laneWidth * 0.7 - 20)
+}
+
+/**
+ * Width a single monster card gets in the lane's flex row. Cards share the
+ * container evenly, capped at LANE_CARD_MAX, and never shrink below their
+ * icon width, so icons physically cannot overlap.
+ */
+export function laneCardWidth(packSize: number, containerWidth: number): number {
+  const iconWidth = isCompactPack(packSize) ? LANE_ICON_COMPACT : LANE_ICON_NORMAL
+  const share = containerWidth / Math.max(1, packSize)
+  return Math.max(iconWidth, Math.min(LANE_CARD_MAX, share))
+}
+
+export interface LaneSlotLayout {
+  slot: number
+  left: number
+  width: number
+}
+
+/**
+ * Front-to-back layout of a pack's monsters inside the lane container.
+ * Cards tile from the container's left edge; consecutive cards never overlap
+ * (left[i+1] >= left[i] + width[i] always holds).
+ */
+export function layoutLaneSlots(packSize: number, laneWidth: number): LaneSlotLayout[] {
+  const width = laneCardWidth(packSize, laneContainerWidth(laneWidth))
+  return Array.from({ length: Math.max(0, packSize) }, (_, slot) => ({ slot, left: slot * width, width }))
+}
+
 export function PackLane({ character, currentPack }: PackLaneProps) {
   const members = useMemo(() => {
     return [...(currentPack ?? [])].sort((a, b) => a.slot - b.slot)
@@ -230,7 +272,9 @@ export function PackLane({ character, currentPack }: PackLaneProps) {
                 <motion.div
                   key={member.id}
                   layout
-                  className="flex-1 basis-0 min-w-0 max-w-[5rem] flex items-center justify-center"
+                  className={`flex-1 basis-0 max-w-[5rem] flex items-center justify-center ${
+                    compact ? 'min-w-[2.25rem]' : 'min-w-[3rem]'
+                  }`}
                   initial={{ opacity: 0, x: 80 }}
                   animate={{ opacity: 1, x: 0 }}
                   exit={{ opacity: 0, scale: 0.5 }}
