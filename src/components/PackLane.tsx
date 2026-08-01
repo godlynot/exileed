@@ -114,25 +114,35 @@ const PackMonsterItem = memo(function PackMonsterItem({ member, index, isFront, 
             transition={{ duration: 0.15 }}
           />
         </div>
-        <div className="text-[9px] text-center text-gray-300 mt-0.5 font-medium">
+        <div
+          className={`w-full text-center text-gray-300 mt-0.5 font-medium leading-none h-3 overflow-hidden whitespace-nowrap ${
+            compact ? 'text-[8px]' : 'text-[9px]'
+          }`}
+        >
           {formatHp(member.currentLife)}/{formatHp(member.maxLife)}
         </div>
       </div>
 
       {/* Rarity label on its own row */}
-      <div className={`text-[9px] uppercase tracking-wider ${isElite ? 'text-orange-400 font-semibold' : 'text-gray-500'}`}>
+      <div
+        className={`text-[9px] uppercase tracking-wider leading-none h-3 truncate w-full text-center ${
+          isElite ? 'text-orange-400 font-semibold' : 'text-gray-500'
+        }`}
+      >
         {isElite ? 'Elite' : monster.rarity === 'normal' ? 'Normal' : monster.rarity}
       </div>
 
       {/* Range-band chip: current front-to-back position, not the original spawn slot */}
-      <div className={`text-[8px] font-semibold uppercase tracking-wider px-1.5 rounded-sm border mt-1 ${bandChipClass(index)}`}>
+      <div
+        className={`text-[8px] font-semibold uppercase tracking-wider px-1.5 rounded-sm border mt-1 leading-none h-3.5 flex items-center whitespace-nowrap ${bandChipClass(index)}`}
+      >
         {bandForSlot(index)}
       </div>
 
-      {/* Monster name below the icon/HP/rarity, with room to breathe */}
+      {/* Monster name on its own fixed row — truncates instead of wrapping into the lane labels */}
       <div
-        className="text-[10px] text-center text-gray-200 mt-1 leading-tight w-full px-1"
-        style={{ minHeight: '1.25rem' }}
+        title={monster.name}
+        className="text-[10px] text-center text-gray-200 mt-1 leading-none h-4 w-full px-1 truncate"
       >
         {monster.name}
       </div>
@@ -233,8 +243,8 @@ export function PackLane({ character, currentPack }: PackLaneProps) {
         )}
       </div>
 
-      {/* Lane */}
-      <div className="relative w-full h-36">
+      {/* Lane — tall enough that card text rows never collide with the band labels below */}
+      <div className="relative w-full h-44">
         {/* Lane track — flows from the pack on the right toward the player on the left */}
         <div className="absolute top-1/2 left-0 right-0 h-1 bg-gradient-to-r from-[#d4a017]/40 via-[#d4a017]/20 to-transparent -translate-y-1/2" />
 

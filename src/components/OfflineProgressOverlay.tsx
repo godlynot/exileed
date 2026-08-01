@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { motion } from 'framer-motion'
 import { Clock, Coins, Skull, TrendingUp, Package } from 'lucide-react'
 import { useGameStore } from '../store/gameStore.ts'
@@ -23,14 +23,19 @@ export function OfflineProgressOverlay() {
 
   const [progress, setProgress] = useState(0)
   const [simulated, setSimulated] = useState(false)
-  const [started, setStarted] = useState(false)
+  // Ref guard instead of state: setting a state flag inside the effect would
+  // re-render, re-run the effect, and let its own cleanup clear the pending
+  // timer before it ever fires (the stuck-at-0% bug). A ref doesn't re-render,
+  // and we reset it in cleanup so StrictMode's mount-cleanup-mount still runs
+  // the sim exactly once.
+  const startedRef = useRef(false)
 
   // Kick off the offline simulation once on mount. The real sim is fast
   // (~1s for the full 8h cap), so we defer it a frame so the overlay paints
   // first, and animate progress from its chunk callback.
   useEffect(() => {
-    if (started || offlineSummary || offlineSeconds <= 0) return
-    setStarted(true)
+    if (startedRef.current || offlineSummary || offlineSeconds <= 0) return
+    startedRef.current = true
 
     let cancelled = false
     const snapshot = useGameStore.getState()
@@ -38,19 +43,26 @@ export function OfflineProgressOverlay() {
     const timer = setTimeout(() => {
       simulateOfflineProgress(snapshot, offlineSeconds, p => {
         if (!cancelled) setProgress(p)
-      }).then(result => {
-        if (cancelled) return
-        setProgress(1)
-        applyOfflineProgress(result.state, result.summary)
-        setSimulated(true)
       })
+        .then(result => {
+          if (cancelled) return
+          setProgress(1)
+          applyOfflineProgress(result.state, result.summary)
+          setSimulated(true)
+        })
+        .catch(err => {
+          console.error('Offline progress simulation failed:', err)
+          // Never leave the player stuck on the overlay — bail out gracefully.
+          if (!cancelled) dismissOfflineProgress()
+        })
     }, 120)
 
     return () => {
       cancelled = true
       clearTimeout(timer)
+      startedRef.current = false
     }
-  }, [started, offlineSeconds, offlineSummary, applyOfflineProgress])
+  }, [offlineSeconds, offlineSummary, applyOfflineProgress, dismissOfflineProgress])
 
   const summary = useMemo(() => offlineSummary, [offlineSummary])
 
