@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, spyOn } from "bun:test";
-import { skillDamage, armourMitigation, applyResistance, hitChance, createCombatState, processSkillHits, aggregateSupportModifiers, simulateTick, spawnMonster } from "./combat.ts";
-import type { Character, Monster, Skill, EquippedSkill, CombatState, GameState, Zone } from "../types/game.ts";
+import { skillDamage, armourMitigation, applyResistance, hitChance, createCombatState, processSkillHits, aggregateSupportModifiers, simulateTick, spawnMonster, rangeBandHitCount } from "./combat.ts";
+import type { Character, Monster, Skill, EquippedSkill, CombatState, GameState, Zone, PackMember } from "../types/game.ts";
 
 // --- Fixtures ---
 
@@ -44,6 +44,7 @@ function makeCharacter(overrides: Partial<Character> = {}): Character {
     isAlive: true,
     respawnTimer: 0,
     allocatedNode: [],
+    allocatedNodes: [],
     passivePoints: 0,
     ascendancyId: null,
     allocatedAscendancyNodes: [],
@@ -388,41 +389,20 @@ describe("pack and named-elite system", () => {
     }
   });
 
-  it("preserves pack state across consecutive spawns when the pack is not exhausted", () => {
-    const zone = makeZone({ eliteChance: 0 });
-    const combat = makeCombat();
-    const first = spawnMonster(zone, { ...combat, packSizeRemaining: 0 });
-    expect(first.combat.packSizeRemaining).toBeGreaterThanOrEqual(1);
-
-    const second = spawnMonster(zone, { ...combat, packSizeRemaining: first.combat.packSizeRemaining });
-    expect(second.combat.packSizeRemaining).toBe(first.combat.packSizeRemaining);
-    expect(second.combat.packNamedEliteCount).toBe(first.combat.packNamedEliteCount);
-  });
-
   it("caps named elites at 1 per pack for acts 1-7 and 2 for act 8+", () => {
     const lowActZone = makeZone({ act: 3, level: 20, eliteChance: 1 });
     const highActZone = makeZone({ act: 8, level: 60, eliteChance: 1 });
     const randomMock = spyOn(Math, "random").mockReturnValue(0);
 
     // Low act: at most 1 named elite per pack.
-    let combat = makeCombat();
-    let elites = 0;
-    for (let i = 0; i < 4; i++) {
-      const result = spawnMonster(lowActZone, combat);
-      if (result.monster.isNamedElite) elites++;
-      combat = result.combat;
-    }
-    expect(elites).toBeLessThanOrEqual(1);
+    const lowResult = spawnMonster(lowActZone, makeCombat());
+    const lowElites = lowResult.combat.currentPack.filter(m => m.monster.isNamedElite).length;
+    expect(lowElites).toBeLessThanOrEqual(1);
 
     // High act: at most 2 named elites per pack.
-    elites = 0;
-    combat = { ...makeCombat(), packSizeRemaining: 0, packNamedEliteCount: 0 };
-    for (let i = 0; i < 4; i++) {
-      const result = spawnMonster(highActZone, combat);
-      if (result.monster.isNamedElite) elites++;
-      combat = result.combat;
-    }
-    expect(elites).toBeLessThanOrEqual(2);
+    const highResult = spawnMonster(highActZone, makeCombat());
+    const highElites = highResult.combat.currentPack.filter(m => m.monster.isNamedElite).length;
+    expect(highElites).toBeLessThanOrEqual(2);
 
     randomMock.mockRestore();
   });
@@ -447,5 +427,207 @@ describe("pack and named-elite system", () => {
 
     expect(result.monster.isNamedElite).toBeFalsy();
     expect(result.monster.rarity).toBe("normal");
+  });
+
+  describe("pack advancement", () => {
+    function makePackMember(overrides: { id: string; slot: number; monster?: Partial<Monster> }): PackMember {
+      const monster = makeMonster({
+        id: `mob_${overrides.id}`,
+        name: `Mob ${overrides.id}`,
+        life: 100,
+        maxLife: 100,
+        damage: [{ type: "physical" as const, min: 0, max: 0 }],
+        ...overrides.monster,
+      });
+      return {
+        id: `member_${overrides.id}`,
+        monster,
+        currentLife: monster.life,
+        maxLife: monster.maxLife,
+        slot: overrides.slot,
+      };
+    }
+
+    it("currentPack shrinks when the active pack member dies", () => {
+      const member1 = makePackMember({ id: "a", slot: 0 });
+      const member2 = makePackMember({ id: "b", slot: 1 });
+      const member3 = makePackMember({ id: "c", slot: 2 });
+      const combat: CombatState = {
+        ...createCombatState(member1.monster),
+        currentPack: [member1, member2, member3],
+        monster: member1.monster,
+        monsterLife: 0,
+      };
+      const zone = makeZone({ eliteChance: 0 });
+      const state = makeGameState(makeCharacter(), combat);
+
+      const { state: nextState } = simulateTick({ ...state, zones: [zone], activeZoneId: zone.id });
+
+      expect(nextState.combat.currentPack.length).toBe(2);
+      expect(nextState.combat.currentPack[0].monster.id).toBe(member2.monster.id);
+      expect(nextState.combat.currentPack[0].currentLife).toBe(member2.maxLife);
+    });
+
+    it("packCleared fires when the last pack member dies", () => {
+      const member = makePackMember({ id: "only", slot: 0 });
+      const combat: CombatState = {
+        ...createCombatState(member.monster),
+        currentPack: [member],
+        monster: member.monster,
+        monsterLife: 0,
+      };
+      const zone = makeZone({ eliteChance: 0 });
+      const state = makeGameState(makeCharacter(), combat);
+
+      const { events } = simulateTick({ ...state, zones: [zone], activeZoneId: zone.id });
+
+      const clearedEvent = events.find(e => e.type === "packCleared");
+      expect(clearedEvent).toBeDefined();
+      expect(clearedEvent?.size).toBe(1);
+    });
+
+    it("carryover damage applies to the next pack member", () => {
+      const member1 = makePackMember({ id: "a", slot: 0 });
+      const member2 = makePackMember({ id: "b", slot: 1 });
+      const combat: CombatState = {
+        ...createCombatState(member1.monster),
+        currentPack: [member1, member2],
+        monster: member1.monster,
+        monsterLife: 0,
+        packDamageCarryover: 50,
+      };
+      const zone = makeZone({ eliteChance: 0 });
+      const state = makeGameState(makeCharacter(), combat);
+
+      const { state: nextState } = simulateTick({ ...state, zones: [zone], activeZoneId: zone.id });
+
+      expect(nextState.combat.currentPack.length).toBe(1);
+      expect(nextState.combat.currentPack[0].monster.id).toBe(member2.monster.id);
+      expect(nextState.combat.currentPack[0].currentLife).toBe(member2.maxLife - 50);
+    });
+  });
+});
+
+describe("skill range bands (pack multi-hit)", () => {
+  function makeZone(overrides: Partial<Zone> = {}): Zone {
+    return {
+      id: "test_zone",
+      name: "Test Zone",
+      act: 1,
+      level: 2,
+      monsterIds: ["drowned_corsair"],
+      eliteTemplateIds: [],
+      eliteChance: 0,
+      killProgress: 0,
+      killsRequired: 10,
+      unlocked: true,
+      ...overrides,
+    } as Zone;
+  }
+
+  function makePackMember(overrides: { id: string; slot: number; monster?: Partial<Monster> }): PackMember {
+    const monster = makeMonster({
+      id: `mob_${overrides.id}`,
+      name: `Mob ${overrides.id}`,
+      level: 0,
+      life: 1000,
+      maxLife: 1000,
+      armour: 0,
+      damage: [{ type: "physical" as const, min: 0, max: 0 }],
+      ...overrides.monster,
+    });
+    return {
+      id: `member_${overrides.id}`,
+      monster,
+      currentLife: monster.life,
+      maxLife: monster.maxLife,
+      slot: overrides.slot,
+    };
+  }
+
+  // Equips a real skill id (band tags live on the actual data in src/data/skills.ts).
+  function makeBandState(skillId: string) {
+    const members = [0, 1, 2, 3].map(i => makePackMember({ id: `m${i}`, slot: i }));
+    const char = makeCharacter({
+      special: { alwaysHit: true },
+      criticalChance: 0,
+      evasion: 10000,
+      equippedSkills: [{ skillId, supportIds: [], cooldownRemaining: 0, hitCounter: 0 }],
+    });
+    const combat: CombatState = {
+      ...createCombatState(members[0].monster),
+      currentPack: members,
+      monster: members[0].monster,
+      monsterLife: members[0].maxLife,
+    };
+    const zone = makeZone({ eliteChance: 0 });
+    return { state: makeGameState(char, combat), zone };
+  }
+
+  function tickBand(skillId: string): PackMember[] {
+    const { state, zone } = makeBandState(skillId);
+    const randomMock = spyOn(Math, "random").mockReturnValue(0.5);
+    const { state: nextState } = simulateTick({ ...state, zones: [zone], activeZoneId: zone.id });
+    randomMock.mockRestore();
+    return nextState.combat.currentPack;
+  }
+
+  it("rangeBandHitCount maps bands to front-to-back target counts", () => {
+    const packSize = 4;
+    expect(rangeBandHitCount(makeSkill({ tags: ["melee"] }), packSize)).toBe(1);
+    expect(rangeBandHitCount(makeSkill({ tags: ["nearRange"] }), packSize)).toBe(2);
+    expect(rangeBandHitCount(makeSkill({ tags: ["farRange"] }), packSize)).toBe(3);
+    expect(rangeBandHitCount(makeSkill({ tags: ["allRange"] }), packSize)).toBe(packSize);
+    // AoE is capped at the live pack size
+    expect(rangeBandHitCount(makeSkill({ tags: ["allRange"] }), 2)).toBe(2);
+  });
+
+  it("melee band (Heavy Strike) damages only the front pack member", () => {
+    const pack = tickBand("strike");
+    expect(pack[0].currentLife).toBeLessThan(pack[0].maxLife);
+    expect(pack[1].currentLife).toBe(pack[1].maxLife);
+    expect(pack[2].currentLife).toBe(pack[2].maxLife);
+    expect(pack[3].currentLife).toBe(pack[3].maxLife);
+  });
+
+  it("nearRange band (Essence Drain) damages the front two pack members", () => {
+    const pack = tickBand("essence_drain");
+    expect(pack[0].currentLife).toBeLessThan(pack[0].maxLife);
+    expect(pack[1].currentLife).toBeLessThan(pack[1].maxLife);
+    expect(pack[2].currentLife).toBe(pack[2].maxLife);
+    expect(pack[3].currentLife).toBe(pack[3].maxLife);
+  });
+
+  it("farRange band (Firebolt) damages the front three pack members", () => {
+    const pack = tickBand("firebolt");
+    expect(pack[0].currentLife).toBeLessThan(pack[0].maxLife);
+    expect(pack[1].currentLife).toBeLessThan(pack[1].maxLife);
+    expect(pack[2].currentLife).toBeLessThan(pack[2].maxLife);
+    expect(pack[3].currentLife).toBe(pack[3].maxLife);
+  });
+
+  it("allRange band (Ice Nova) damages the whole pack", () => {
+    const pack = tickBand("ice_nova");
+    expect(pack.every(m => m.currentLife < m.maxLife)).toBe(true);
+  });
+
+  it("emits a bandHit log event when a skill hits multiple pack members", () => {
+    const { state, zone } = makeBandState("firebolt");
+    const randomMock = spyOn(Math, "random").mockReturnValue(0.5);
+    const { events } = simulateTick({ ...state, zones: [zone], activeZoneId: zone.id });
+    randomMock.mockRestore();
+
+    const bandHits = events.filter(e => e.type === "bandHit");
+    expect(bandHits.length).toBe(1);
+    expect(bandHits[0]).toMatchObject({ type: "bandHit", skillName: "Firebolt", targetCount: 3 });
+  });
+
+  it("does not emit a bandHit event for a single-target skill", () => {
+    const { state, zone } = makeBandState("strike");
+    const randomMock = spyOn(Math, "random").mockReturnValue(0.5);
+    const { events } = simulateTick({ ...state, zones: [zone], activeZoneId: zone.id });
+    randomMock.mockRestore();
+
+    expect(events.filter(e => e.type === "bandHit").length).toBe(0);
   });
 });

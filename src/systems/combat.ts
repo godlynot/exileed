@@ -12,6 +12,7 @@ import type {
   Skill,
   Support,
   AilmentInstance,
+  PackMember,
 } from '../types/game.ts'
 import { DAMAGE, MONSTER, RECOVERY, TICKS_PER_SECOND, TICK_RATE, monsterScalingMultiplier } from '../data/balance.ts'
 import { applyDeathPenalty, addExperience } from './xp.ts'
@@ -110,6 +111,7 @@ export function createCombatState(monster: Monster): CombatState {
     deathSummary: null,
     packSizeRemaining: 0,
     packNamedEliteCount: 0,
+    currentPack: [],
   }
 }
 
@@ -257,27 +259,131 @@ function createMonster(zone: Zone, canSpawnNamedElite: boolean): Monster {
   return monster
 }
 
-export function spawnMonster(zone: Zone, combat: CombatState): { monster: Monster; combat: CombatState } {
-  let packSizeRemaining = combat.packSizeRemaining
-  let packNamedEliteCount = combat.packNamedEliteCount
-
-  // Start a new pack when the previous one is exhausted.
-  if (packSizeRemaining <= 0) {
-    packSizeRemaining = rollPackSize(zone)
-    packNamedEliteCount = 0
-  }
-
+function seedPack(zone: Zone, combat: CombatState): { pack: PackMember[]; combat: CombatState; events: CombatEvent[] } {
+  const size = rollPackSize(zone)
   const maxElites = maxNamedElitesForZone(zone)
-  const canSpawnNamedElite = packNamedEliteCount < maxElites
-  const monster = createMonster(zone, canSpawnNamedElite)
+  const pack: PackMember[] = []
+  const events: CombatEvent[] = []
+  let packNamedEliteCount = 0
 
-  if (monster.isNamedElite) {
-    packNamedEliteCount++
+  for (let slot = 0; slot < size; slot++) {
+    const canSpawnNamedElite = packNamedEliteCount < maxElites
+    const monster = createMonster(zone, canSpawnNamedElite)
+
+    if (monster.isNamedElite) {
+      packNamedEliteCount++
+      events.push(makeEvent({
+        type: 'eliteSpawned',
+        monsterId: monster.id,
+        monsterType: monster.name,
+        level: monster.level,
+      }))
+    }
+
+    pack.push({
+      id: `${monster.id}_${slot}_${Date.now()}_${eventIdCounter++}`,
+      monster,
+      currentLife: monster.maxLife,
+      maxLife: monster.maxLife,
+      slot,
+    })
   }
+
+  events.push(makeEvent({
+    type: 'packSeeded',
+    size: pack.length,
+    hasElite: packNamedEliteCount > 0,
+    zoneId: zone.id,
+  }))
 
   return {
-    monster,
-    combat: { ...combat, packSizeRemaining, packNamedEliteCount },
+    pack,
+    combat: { ...combat, packNamedEliteCount, packSizeRemaining: size },
+    events,
+  }
+}
+
+function activatePackMember(combat: CombatState, member: PackMember): CombatState {
+  return {
+    ...combat,
+    monster: member.monster,
+    monsterLife: member.currentLife,
+  }
+}
+
+function syncActivePackMember(combat: CombatState): CombatState {
+  if (combat.currentPack.length === 0 || !combat.monster) return combat
+  const [first, ...rest] = combat.currentPack
+  if (first.monster.id !== combat.monster.id && first.id !== combat.monster.id) return combat
+  return {
+    ...combat,
+    currentPack: [{ ...first, currentLife: combat.monsterLife }, ...rest],
+  }
+}
+
+function advancePack(
+  zone: Zone,
+  combat: CombatState,
+  events: CombatEvent[],
+  carryoverDamage: number
+): CombatState {
+  const originalSize = combat.currentPack.length
+
+  // Remove the dead front member
+  const remaining = combat.currentPack.slice(1)
+
+  // If the pack still has members, promote the next one
+  if (remaining.length > 0) {
+    const nextMember = remaining[0]
+    const updatedLife = Math.max(1, nextMember.currentLife - carryoverDamage)
+    const updated = { ...nextMember, currentLife: updatedLife }
+    events.push(makeEvent({
+      type: 'monsterSpawned',
+      monsterId: updated.monster.id,
+      monsterType: updated.monster.name,
+      level: updated.monster.level,
+      rarity: updated.monster.rarity,
+      modifierNames: (updated.monster.modifierIds ?? []).map(id => MONSTER_MODIFIERS_BY_ID[id]?.displayName ?? id),
+    }))
+    if (updated.monster.rarity === 'boss') {
+      events.push(makeEvent({ type: 'bossSpawned', bossId: updated.monster.id }))
+    }
+    return activatePackMember({ ...combat, currentPack: [updated, ...remaining.slice(1)] }, updated)
+  }
+
+  // Pack cleared: seed the next pack
+  events.push(makeEvent({ type: 'packCleared', size: originalSize }))
+  const seed = seedPack(zone, combat)
+  const first = { ...seed.pack[0], currentLife: Math.max(1, seed.pack[0].currentLife - carryoverDamage) }
+  const seededPack = [first, ...seed.pack.slice(1)]
+  const nextCombat = activatePackMember({ ...seed.combat, currentPack: seededPack }, first)
+  events.push(...seed.events)
+  const promoted = nextCombat.currentPack[0]
+  events.push(makeEvent({
+    type: 'monsterSpawned',
+    monsterId: promoted.monster.id,
+    monsterType: promoted.monster.name,
+    level: promoted.monster.level,
+    rarity: promoted.monster.rarity,
+    modifierNames: (promoted.monster.modifierIds ?? []).map(id => MONSTER_MODIFIERS_BY_ID[id]?.displayName ?? id),
+  }))
+  if (promoted.monster.rarity === 'boss') {
+    events.push(makeEvent({ type: 'bossSpawned', bossId: promoted.monster.id }))
+  }
+  return {
+    ...nextCombat,
+    currentPack: seededPack,
+    damageTakenByType: { physical: 0, fire: 0, cold: 0, lightning: 0, chaos: 0 },
+  }
+}
+
+export function spawnMonster(zone: Zone, combat: CombatState): { monster: Monster; combat: CombatState; events: CombatEvent[] } {
+  const seed = seedPack(zone, combat)
+  const nextCombat = activatePackMember(seed.combat, seed.pack[0])
+  return {
+    monster: seed.pack[0].monster,
+    combat: { ...nextCombat, currentPack: seed.pack },
+    events: seed.events,
   }
 }
 
@@ -367,6 +473,19 @@ function heraldDamageReduction(combat: CombatState, special: PassiveSpecialEffec
   const active = combat.herald.active
   if (active.length === 0) return 0
   return active.includes('silence') ? (special.unwaveringDeclaration ? 0.12 : 0.08) : 0
+}
+
+/**
+ * How many front-to-back pack members a skill can hit, derived from its range-band tag.
+ * melee = front only, nearRange = front 2, farRange = front 3, allRange = whole pack.
+ * Band membership is a static slot index — no continuous distance or positioning math.
+ */
+export function rangeBandHitCount(skill: Skill, packSize: number): number {
+  const tags = skill.tags
+  if (tags.includes('allRange')) return Math.max(1, packSize)
+  if (tags.includes('farRange')) return Math.min(3, packSize)
+  if (tags.includes('nearRange')) return Math.min(2, packSize)
+  return 1 // melee / default single-target
 }
 
 export function skillDamage(
@@ -536,7 +655,16 @@ export function skillDamage(
   return { damage: Math.max(1, Math.floor(damage)), damageType: skill.damageType, crit: isCrit, isHit: true, nextEquipped, ailments }
 }
 
-interface SkillProcessResult {
+export interface SkillHitOutcome {
+  skillId: string
+  damage: number
+  isHit: boolean
+  crit: boolean
+  ailments: AilmentInstance[]
+  targetCount: number
+}
+
+export interface SkillProcessResult {
   character: Character
   damage: number
   evaded: boolean
@@ -546,6 +674,8 @@ interface SkillProcessResult {
   ailments: AilmentInstance[]
   crit: boolean
   extraEvents: CombatEvent[]
+  // Per-skill outcomes so the sim can apply damage to the first N pack members per range band
+  hitsBySkill: SkillHitOutcome[]
 }
 
 export function processSkillHits(character: Character, monster: Monster, combat: CombatState): SkillProcessResult {
@@ -556,6 +686,8 @@ export function processSkillHits(character: Character, monster: Monster, combat:
   const nextEquipped: EquippedSkill[] = []
   let ailments: AilmentInstance[] = []
   const leveledUp: { gemId: string; newLevel: number }[] = []
+  const hitsBySkill: SkillHitOutcome[] = []
+  const packSize = combat.currentPack.length > 0 ? combat.currentPack.length : 1
 
   for (const equipped of character.equippedSkills) {
     const skill = SKILLS[equipped.skillId]
@@ -581,6 +713,14 @@ export function processSkillHits(character: Character, monster: Monster, combat:
     anyCrit = anyCrit || result.crit
     nextEquipped.push(result.nextEquipped)
     ailments = ailments.concat(result.ailments)
+    hitsBySkill.push({
+      skillId: skill.id,
+      damage: result.damage,
+      isHit: result.isHit,
+      crit: result.crit,
+      ailments: result.ailments,
+      targetCount: rangeBandHitCount(skill, packSize),
+    })
   }
 
   character = { ...character, equippedSkills: nextEquipped }
@@ -606,7 +746,7 @@ export function processSkillHits(character: Character, monster: Monster, combat:
         crit: anyCrit,
       })
 
-  return { character, damage: totalDamage, evaded, event, monsterEvasionStacks: currentStacks, combat, ailments, crit: anyCrit, extraEvents }
+  return { character, damage: totalDamage, evaded, event, monsterEvasionStacks: currentStacks, combat, ailments, crit: anyCrit, extraEvents, hitsBySkill }
 }
 
 function applyDevOverrides(character: Character): Character {
@@ -793,17 +933,18 @@ export function simulateTick(state: GameState): { state: GameState; events: Comb
     }
   }
 
-  // Ensure a monster exists
-  if (!combat.monster) {
-    if (!zone) return { state, events }
+  // Ensure a pack exists and an front monster is active
+  if (combat.currentPack.length === 0) {
+    if (!zone) {
+      return { state: { ...state, character, combat, zones, inventory, activeTrial, gamePhase }, events }
+    }
     const spawnResult = spawnMonster(zone, combat)
-    const monster = spawnResult.monster
     combat = {
       ...spawnResult.combat,
-      monster,
-      monsterLife: monster.maxLife,
       damageTakenByType: { physical: 0, fire: 0, cold: 0, lightning: 0, chaos: 0 },
     }
+    events.push(...spawnResult.events)
+    const monster = spawnResult.monster
     events.push(makeEvent({
       type: 'monsterSpawned',
       monsterId: monster.id,
@@ -815,18 +956,49 @@ export function simulateTick(state: GameState): { state: GameState; events: Comb
     if (monster.rarity === 'boss') {
       events.push(makeEvent({ type: 'bossSpawned', bossId: monster.id }))
     }
+  } else if (!combat.monster) {
+    // A pack exists but the active monster pointer was lost; restore it
+    combat = activatePackMember(combat, combat.currentPack[0])
   }
 
   const monster = combat.monster!
 
-  // Player skills
+  // Player skills — range bands: each skill hits the first N pack members front-to-back.
   if (combat.monsterLife > 0) {
     const skillResult = processSkillHits(character, monster, combat)
     character = skillResult.character
     combat = { ...combat, monsterEvasionStacks: skillResult.monsterEvasionStacks }
     events.push(...skillResult.extraEvents)
     if (skillResult.damage > 0) {
-      combat = { ...combat, lastDamageDealt: skillResult.damage, monsterLife: Math.max(0, combat.monsterLife - skillResult.damage) }
+      // Apply each skill's damage to the first N pack members (band-derived target count),
+      // front-to-back, never skipping the front monster. Band membership is a static slot
+      // index — no positional math or movement.
+      const pack = [...combat.currentPack]
+      let bandHitCount = 0
+      let appliedDamage = 0
+      const bandAilments: AilmentInstance[] = []
+      for (const hit of skillResult.hitsBySkill) {
+        if (!hit.isHit || hit.damage <= 0) continue
+        const count = Math.min(hit.targetCount, pack.length)
+        for (let i = 0; i < count; i++) {
+          pack[i] = { ...pack[i], currentLife: Math.max(0, pack[i].currentLife - hit.damage) }
+        }
+        // Track actual damage dealt to the pack (per-target damage x number of targets hit)
+        appliedDamage += hit.damage * count
+        bandHitCount = Math.max(bandHitCount, count)
+        if (count > 1) {
+          const bandSkill = SKILLS[hit.skillId]
+          // Only ailments from a skill that actually multi-hit spread to the back row
+          bandAilments.push(...hit.ailments)
+          events.push(makeEvent({
+            type: 'bandHit',
+            skillName: bandSkill?.name ?? hit.skillId,
+            targetCount: count,
+          }))
+        }
+      }
+      const frontLife = pack.length > 0 ? pack[0].currentLife : 0
+      combat = { ...combat, currentPack: pack, monsterLife: frontLife, lastDamageDealt: appliedDamage }
       events.push(skillResult.event)
       // apply ailments
       if (skillResult.ailments.length > 0) {
@@ -881,6 +1053,18 @@ export function simulateTick(state: GameState): { state: GameState; events: Comb
         const blindChance = character.special.unwaveringDeclaration ? 1 : 0.25
         if (Math.random() < blindChance) {
           combat = { ...combat, monsterDebuffs: { ...combat.monsterDebuffs, blind: true } }
+        }
+      }
+
+      // Range-band multi-hit: back members also take plain copies of the ailments applied
+      // by the multi-target skills that actually reached them.
+      if (bandAilments.length > 0 && bandHitCount > 1) {
+        for (let i = 1; i < bandHitCount && i < pack.length; i++) {
+          const targetId = pack[i].monster.id
+          combat.ailments[targetId] = [...(combat.ailments[targetId] ?? []), ...bandAilments.map(a => ({ ...a }))]
+          for (const ailment of bandAilments) {
+            events.push(makeEvent({ type: 'ailmentApplied', targetId, ailmentType: ailment.type }))
+          }
         }
       }
 
@@ -1095,6 +1279,9 @@ export function simulateTick(state: GameState): { state: GameState; events: Comb
     }
   }
 
+  // Keep the pack member's current life in sync before deciding death
+  combat = syncActivePackMember(combat)
+
   // Monster killed
   if (combat.monsterLife <= 0) {
     let goldEarned = monster.goldReward
@@ -1276,37 +1463,18 @@ export function simulateTick(state: GameState): { state: GameState; events: Comb
       activeTrial = null
     }
 
-    // Spawn next monster
+    // Advance to the next pack member or seed a fresh pack
     if (zone) {
-      // Advance pack state when a monster is killed.
-      const packSizeRemaining = Math.max(0, combat.packSizeRemaining - 1)
-      const spawnResult = spawnMonster(zone, { ...combat, packSizeRemaining })
-      const nextMonster = spawnResult.monster
-      const nextAilments: Record<string, AilmentInstance[]> = { ...combat.ailments }
-      // Plaguewind carryover: DOTs from the last killed monster infect the next one
-      if (combat.plaguewindCarryover.length > 0) {
-        nextAilments[nextMonster.id] = [...(nextAilments[nextMonster.id] ?? []), ...combat.plaguewindCarryover]
-      }
       const carryoverDamage = combat.packDamageCarryover
-      combat = {
-        ...spawnResult.combat,
-        monster: nextMonster,
-        monsterLife: Math.max(1, nextMonster.maxLife - carryoverDamage),
-        virulent: { ...combat.virulent, patientZeroTarget: null },
-        ailments: nextAilments,
-        plaguewindCarryover: [],
-        packDamageCarryover: 0,
-      }
-      events.push(makeEvent({
-        type: 'monsterSpawned',
-        monsterId: nextMonster.id,
-        monsterType: nextMonster.name,
-        level: nextMonster.level,
-        rarity: nextMonster.rarity,
-        modifierNames: (nextMonster.modifierIds ?? []).map(id => MONSTER_MODIFIERS_BY_ID[id]?.displayName ?? id),
-      }))
-      if (nextMonster.rarity === 'boss') {
-        events.push(makeEvent({ type: 'bossSpawned', bossId: nextMonster.id }))
+      combat = advancePack(zone, combat, events, carryoverDamage)
+
+      // Plaguewind carryover: DOTs from the last killed monster infect the next active one
+      if (combat.monster && combat.plaguewindCarryover.length > 0) {
+        const nextAilments: Record<string, AilmentInstance[]> = { ...combat.ailments }
+        nextAilments[combat.monster.id] = [...(nextAilments[combat.monster.id] ?? []), ...combat.plaguewindCarryover]
+        combat = { ...combat, ailments: nextAilments, plaguewindCarryover: [], packDamageCarryover: 0, virulent: { ...combat.virulent, patientZeroTarget: null } }
+      } else {
+        combat = { ...combat, packDamageCarryover: 0, virulent: { ...combat.virulent, patientZeroTarget: null } }
       }
     }
   }

@@ -5,6 +5,7 @@ export function DevTools() {
   const character = useGameStore(state => state.character)
   const devSetLevel = useGameStore(state => state.devSetLevel)
   const devSetStats = useGameStore(state => state.devSetStats)
+  const devSpawnTestPack = useGameStore(state => state.devSpawnTestPack)
   const [customLevel, setCustomLevel] = useState(character.level)
 
   const [stats, setStats] = useState({
@@ -102,6 +103,19 @@ export function DevTools() {
 
       <div className="text-xs text-gray-400 pt-2 border-t border-[#2e303a]">
         Current level: <span className="text-[#d4a017]">{character.level}</span>
+      </div>
+
+      <div className="pt-4 border-t border-[#2e303a]">
+        <h4 className="text-sm font-medium text-[#d4a017] mb-2">Pack Visualizer</h4>
+        <button
+          onClick={devSpawnTestPack}
+          className="w-full px-3 py-2 bg-orange-900/40 hover:bg-orange-900/60 border border-orange-700/50 rounded text-xs text-orange-200"
+        >
+          Spawn Test Pack (Normal/Magic/Rare/Elite)
+        </button>
+        <p className="text-[10px] text-gray-500 mt-1">
+          Replaces the current pack with one of each rarity so glow/badge distinctions can be checked.
+        </p>
       </div>
 
       {/* Stat overrides */}

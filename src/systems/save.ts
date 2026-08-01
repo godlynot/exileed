@@ -1,7 +1,7 @@
 import { PASSIVE_TREE } from '../data/passiveTree.ts'
 import type { GameState } from '../types/game.ts'
 
-export const SAVE_VERSION = 4
+export const SAVE_VERSION = 5
 export const SAVE_KEY = 'riftidler_save_v4'
 
 export function serializeSave(state: GameState): string {
@@ -49,6 +49,10 @@ function migrateSave(parsed: Record<string, unknown>): Partial<GameState> {
     if (combat.virulent === undefined) combat.virulent = { stacks: {}, septicemiaMultiplier: {}, calcifyAccumulator: {}, slow: {}, patientZeroTarget: null }
     if (combat.monsterDebuffs === undefined) combat.monsterDebuffs = {}
     if (combat.plaguewindCarryover === undefined) combat.plaguewindCarryover = []
+    // Pack lane / named-elite system: ensure pack arrays exist on old saves
+    if (combat.currentPack === undefined) combat.currentPack = []
+    if (combat.packSizeRemaining === undefined) combat.packSizeRemaining = 0
+    if (combat.packNamedEliteCount === undefined) combat.packNamedEliteCount = 0
   }
 
   // Refund passive points from any old tree data and reset to the class root.
@@ -87,6 +91,7 @@ export function deserializeSave(data: string): GameState | null {
 
 export function saveGame(state: GameState): void {
   try {
+    if (typeof localStorage === 'undefined') return
     const tempKey = `${SAVE_KEY}_temp`
     const serialized = serializeSave(state)
     localStorage.setItem(tempKey, serialized)
@@ -102,6 +107,7 @@ export function saveGame(state: GameState): void {
 
 export function loadGame(): GameState | null {
   try {
+    if (typeof localStorage === 'undefined') return null
     const data = localStorage.getItem(SAVE_KEY)
     if (!data) return null
     return deserializeSave(data)

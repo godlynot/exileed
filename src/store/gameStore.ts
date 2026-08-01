@@ -8,7 +8,7 @@ import { TICKS_PER_SECOND, experienceForLevel } from '../data/balance.ts'
 import { PASSIVE_TREE } from '../data/passiveTree.ts'
 import { TRIALS, ASCENDANCIES } from '../data/ascendancies.ts'
 import { applyPassiveStats, applyAscendancyStats, allocateNode, refundNode } from '../systems/passives.ts'
-import { simulateTick } from '../systems/combat.ts'
+import { simulateTick, spawnMonster } from '../systems/combat.ts'
 import { createMomentumState } from '../systems/momentum.ts'
 import { saveGame, loadGame, exportSave as exportSaveString, importSave } from '../systems/save.ts'
 import { BASE_ITEMS, STARTER_ITEMS } from '../data/items.ts'
@@ -155,16 +155,9 @@ function createInitialCurrencies(): Record<string, number> {
 }
 
 function createInitialCombat(zone: Zone): CombatState {
-  const pool = zone.monsterIds.length > 0 ? zone.monsterIds : zone.monsterId ? [zone.monsterId] : []
-  const id = pool[Math.floor(Math.random() * pool.length)]
-  const monsterTemplate = MONSTERS[id]
-  const monster: Monster = {
-    ...monsterTemplate,
-    life: monsterTemplate.maxLife,
-  }
-  return {
-    monster,
-    monsterLife: monster.maxLife,
+  const base: CombatState = {
+    monster: null as unknown as Monster,
+    monsterLife: 0,
     lastDamageDealt: 0,
     lastDamageTaken: 0,
     combatLog: [],
@@ -187,7 +180,9 @@ function createInitialCombat(zone: Zone): CombatState {
     deathSummary: null,
     packSizeRemaining: 0,
     packNamedEliteCount: 0,
+    currentPack: [],
   }
+  return spawnMonster(zone, base).combat
 }
 
 function createStarterEquipment(classId: string): Equipment {
@@ -254,6 +249,7 @@ interface GameActions {
   returnToPreviousZone: () => void
   devSetLevel: (level: number) => void
   devSetStats: (stats: Partial<Character>) => void
+  devSpawnTestPack: () => void
 }
 
 function getInitialState(): GameState {
@@ -520,6 +516,13 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
       if (!trial) return state
       const monsterTemplate = MONSTERS[trial.monsterId]
       const monster: Monster = { ...monsterTemplate, life: monsterTemplate.maxLife }
+      const trialMember = {
+        id: `${monster.id}_trial_0`,
+        monster,
+        currentLife: monster.maxLife,
+        maxLife: monster.maxLife,
+        slot: 0,
+      }
       const combat: CombatState = {
         monster,
         monsterLife: monster.maxLife,
@@ -537,6 +540,7 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
         marshal: { army: null, bulwarkFlat: 0, bulwarkTicksRemaining: 0 },
         packSizeRemaining: 0,
         packNamedEliteCount: 0,
+        currentPack: [trialMember],
         delayedDamageQueue: [],
         ailments: {},
         virulent: { stacks: {}, septicemiaMultiplier: {}, calcifyAccumulator: {}, slow: {}, patientZeroTarget: null },
@@ -582,6 +586,37 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
     set(state => {
       const next = { ...state.character, devOverrides: { ...state.character.devOverrides, ...stats } }
       return { ...state, character: recalcCharacter(state, next) }
+    })
+  },
+
+  devSpawnTestPack: () => {
+    set(state => {
+      const base = MONSTERS['tidecaller'] ?? state.combat.monster
+      if (!base) return state
+      const makeMember = (slot: number, name: string, rarity: 'normal' | 'magic' | 'rare', isNamedElite = false) => {
+        const maxLife = Math.max(50, base.maxLife)
+        const monster = { ...base, name, rarity, isNamedElite }
+        return {
+          id: `test_${slot}_${Date.now()}`,
+          slot,
+          monster,
+          currentLife: maxLife,
+          maxLife,
+        }
+      }
+      const pack = [
+        makeMember(0, 'Normal Tidecaller', 'normal'),
+        makeMember(1, 'Magic Tidecaller', 'magic'),
+        makeMember(2, 'Rare Tidecaller', 'rare'),
+        makeMember(3, 'Salt-Crowned Revenant', 'magic', true),
+      ]
+      const combat = {
+        ...state.combat,
+        currentPack: pack,
+        monster: pack[0].monster,
+        monsterLife: pack[0].currentLife,
+      }
+      return { ...state, combat }
     })
   },
 }))

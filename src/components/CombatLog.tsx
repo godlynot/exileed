@@ -60,6 +60,14 @@ function formatEvent(event: CombatEvent): { text: string; color: string } {
       return { text: `Delayed damage ticks for ${event.damage}`, color: 'text-orange-300' }
     case 'gemLeveledUp':
       return { text: `Gem leveled up: ${event.gemName} is now level ${event.newLevel}`, color: 'text-green-400' }
+    case 'packSeeded':
+      return { text: `Pack seeded: ${event.size} monster${event.size > 1 ? 's' : ''}${event.hasElite ? ' (elite)' : ''}`, color: 'text-orange-400' }
+    case 'eliteSpawned':
+      return { text: `A ${event.monsterType} joins the pack`, color: 'text-orange-300' }
+    case 'packCleared':
+      return { text: `Pack cleared (${event.size})`, color: 'text-yellow-300' }
+    case 'bandHit':
+      return { text: `${event.skillName} hits ${event.targetCount} targets`, color: 'text-cyan-400' }
     default:
       return { text: 'Unknown event', color: 'text-gray-400' }
   }

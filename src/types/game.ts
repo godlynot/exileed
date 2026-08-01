@@ -305,6 +305,9 @@ export interface VirulentState {
 
 export type CombatEvent =
   | { id: string; timestamp: number; type: 'monsterSpawned'; monsterId: string; monsterType: string; level: number; rarity: MonsterRarity; modifierNames: string[] }
+  | { id: string; timestamp: number; type: 'packSeeded'; size: number; hasElite: boolean; zoneId: string }
+  | { id: string; timestamp: number; type: 'eliteSpawned'; monsterId: string; monsterType: string; level: number }
+  | { id: string; timestamp: number; type: 'packCleared'; size: number }
   | { id: string; timestamp: number; type: 'hitLanded'; source: 'player' | 'monster'; targetId: string; damage: number; damageType: DamageType; crit: boolean }
   | { id: string; timestamp: number; type: 'hitAvoided'; source: 'player' | 'monster'; targetId: string; reason: 'evaded' | 'missed' }
   | { id: string; timestamp: number; type: 'monsterDied'; monsterId: string; monsterType: string }
@@ -322,6 +325,15 @@ export type CombatEvent =
   | { id: string; timestamp: number; type: 'auraApplied'; auraId: string }
   | { id: string; timestamp: number; type: 'delayedDamageTick'; targetId: string; damage: number }
   | { id: string; timestamp: number; type: 'gemLeveledUp'; gemId: string; gemName: string; newLevel: number }
+  | { id: string; timestamp: number; type: 'bandHit'; skillName: string; targetCount: number }
+
+export interface PackMember {
+  id: string
+  monster: Monster
+  currentLife: number
+  maxLife: number
+  slot: number
+}
 
 export interface DeathSummary {
   monsterName: string
@@ -367,6 +379,8 @@ export interface CombatState {
   // Pack state for named-elite spawn rules
   packSizeRemaining: number
   packNamedEliteCount: number
+  // Live array of monsters currently alive in this pack
+  currentPack: PackMember[]
 }
 
 export type NodeType = 'small' | 'notable' | 'keystone' | 'root'
@@ -491,7 +505,12 @@ export type SkillTag =
   | 'dot'
   | 'aoe'
   | 'projectile'
+  // Range-band tags: determine how many front-to-back pack members a skill can hit.
+  // melee = front only, nearRange = front 2, farRange = front 3, allRange = whole pack.
   | 'melee'
+  | 'nearRange'
+  | 'farRange'
+  | 'allRange'
 
 export interface AilmentSpec {
   type: 'poison' | 'bleed' | 'burn'
