@@ -243,7 +243,7 @@ export function PackLane({ character, currentPack }: PackLaneProps) {
         )}
       </div>
 
-      {/* Lane — tall enough that card text rows never collide with the band labels below */}
+      {/* Lane */}
       <div className="relative w-full h-44">
         {/* Lane track — flows from the pack on the right toward the player on the left */}
         <div className="absolute top-1/2 left-0 right-0 h-1 bg-gradient-to-r from-[#d4a017]/40 via-[#d4a017]/20 to-transparent -translate-y-1/2" />
@@ -257,14 +257,6 @@ export function PackLane({ character, currentPack }: PackLaneProps) {
             style={{ left: `${8 + i * 10}%` }}
           />
         ))}
-
-        {/* Range bands — static slot bands (decorative; band logic lives in combat tags) */}
-        <div className="absolute inset-y-0 left-[32%] right-[58%] bg-red-500/5 border-x border-red-500/10" />
-        <div className="absolute inset-y-0 left-[43%] right-[49%] bg-amber-500/5 border-x border-amber-500/10" />
-        <div className="absolute inset-y-0 left-[49%] right-[28%] bg-blue-500/5 border-x border-blue-500/10" />
-        <span className="absolute bottom-1 left-[33%] text-[9px] uppercase tracking-widest text-red-400/70">Melee · 1</span>
-        <span className="absolute bottom-1 left-[44%] text-[9px] uppercase tracking-widest text-amber-400/70">Near · 2</span>
-        <span className="absolute bottom-1 left-[50%] text-[9px] uppercase tracking-widest text-blue-400/70">Far · 3</span>
 
         {/* Player avatar on the left */}
         <div className="absolute left-4 top-1/2 -translate-y-1/2 flex flex-col items-center z-10">
