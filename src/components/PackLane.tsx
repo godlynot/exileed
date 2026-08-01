@@ -60,9 +60,10 @@ interface PackMonsterProps {
   member: PackMember
   index: number
   isFront: boolean
+  compact?: boolean
 }
 
-const PackMonsterItem = memo(function PackMonsterItem({ member, index, isFront }: PackMonsterProps) {
+const PackMonsterItem = memo(function PackMonsterItem({ member, index, isFront, compact }: PackMonsterProps) {
   const monster = member.monster
   const hpPercent = Math.max(0, (member.currentLife / member.maxLife) * 100)
   const isElite = !!monster.isNamedElite
@@ -75,8 +76,7 @@ const PackMonsterItem = memo(function PackMonsterItem({ member, index, isFront }
       animate={{ opacity: 1, x: 0 }}
       exit={{ opacity: 0, scale: 0.6 }}
       transition={{ duration: 0.35 }}
-      className="relative flex flex-col items-center shrink-0"
-      style={{ width: '5rem' }}
+      className="relative flex flex-col items-center w-full"
     >
       {/* Active target pulse ring */}
       {isFront && (
@@ -84,12 +84,14 @@ const PackMonsterItem = memo(function PackMonsterItem({ member, index, isFront }
       )}
 
       <div
-        className={`relative flex items-center justify-center w-12 h-12 rounded-full border-2 bg-[#15161d] ${
+        className={`relative flex items-center justify-center rounded-full border-2 bg-[#15161d] ${
+          compact ? 'w-9 h-9' : 'w-12 h-12'
+        } ${
           isFront ? 'border-white shadow-[0_0_12px_rgba(255,255,255,0.6)]' : 'border-[#3f414d]'
         }`}
       >
         <motion.div
-          className="text-2xl"
+          className={compact ? 'text-xl' : 'text-2xl'}
           style={{ filter: glow }}
           animate={{ x: isFront ? [-1, 1, -1] : [-2, 2, -2] }}
           transition={{ repeat: Infinity, duration: isFront ? 1.5 : 2.5, ease: 'easeInOut' }}
@@ -217,33 +219,35 @@ export function PackLane({ character, currentPack }: PackLaneProps) {
           <div className="text-5xl drop-shadow-lg">{classIcon(character.classId)}</div>
         </div>
 
-        {/* Monsters drifting along the lane — active member is leftmost, closest to the player */}
-        <AnimatePresence initial={false}>
-          {members.map((member, index) => {
-            const isFront = index === 0
-            const baseLeft = 40 + index * 6 // pack spawns on the right, active member closest to the player
-            return (
-              <motion.div
-                key={member.id}
-                className="absolute top-1/2 -translate-y-1/2"
-                initial={{ left: `${baseLeft + 5}%`, opacity: 0 }}
-                animate={{
-                  left: `${baseLeft}%`,
-                  opacity: 1,
-                }}
-                exit={{ opacity: 0, scale: 0.5 }}
-                transition={{ duration: 0.5, ease: 'easeOut' }}
-              >
+        {/* Monsters — flex row, evenly distributed so icons never overlap; the front
+            monster is leftmost, closest to the player. Cards shrink for large swarms. */}
+        <div className="absolute top-1/2 -translate-y-1/2 left-[30%] right-5 flex items-center z-[5]">
+          <AnimatePresence initial={false}>
+            {members.map((member, index) => {
+              const isFront = index === 0
+              const compact = members.length > 6
+              return (
                 <motion.div
-                  animate={{ x: [-3, 3, -3] }}
-                  transition={{ repeat: Infinity, duration: 2 + index * 0.2, ease: 'easeInOut' }}
+                  key={member.id}
+                  layout
+                  className="flex-1 basis-0 min-w-0 max-w-[5rem] flex items-center justify-center"
+                  initial={{ opacity: 0, x: 80 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, scale: 0.5 }}
+                  transition={{ duration: 0.4, ease: 'easeOut' }}
                 >
-                  <PackMonsterItem member={member} index={index} isFront={isFront} />
+                  <motion.div
+                    className="w-full"
+                    animate={{ x: [-3, 3, -3] }}
+                    transition={{ repeat: Infinity, duration: 2 + index * 0.2, ease: 'easeInOut' }}
+                  >
+                    <PackMonsterItem member={member} index={index} isFront={isFront} compact={compact} />
+                  </motion.div>
                 </motion.div>
-              </motion.div>
-            )
-          })}
-        </AnimatePresence>
+              )
+            })}
+          </AnimatePresence>
+        </div>
 
         {members.length === 0 && (
           <div className="absolute inset-0 flex items-center justify-center text-sm text-gray-500 italic">
