@@ -3,19 +3,19 @@ import { useGameStore } from '../store/gameStore.ts'
 import { SKILLS } from '../data/skills.ts'
 import { SUPPORTS } from '../data/supports.ts'
 import { gemXpForNextLevel } from '../systems/gems.ts'
+import { skillDisplayStats } from '../systems/combat.ts'
 
 export function SkillsPanel() {
   const character = useGameStore(state => state.character)
+  const combat = useGameStore(state => state.combat)
   const equipSkill = useGameStore(state => state.equipSkill)
   const equipSupport = useGameStore(state => state.equipSupport)
 
   const [selectedSkillSlot, setSelectedSkillSlot] = useState<number | null>(null)
   const [selectedSupportSlot, setSelectedSupportSlot] = useState<{ skill: number; support: number } | null>(null)
 
-  const ownedSkillIds = character.ownedGems.map(g => g.id)
-  const ownedSupportIds = character.ownedGems.map(g => g.id)
-  const allSkillIds = Object.keys(SKILLS)
-  const allSupportIds = Object.keys(SUPPORTS)
+  const ownedSkillIds = character.ownedGems.filter(gem => !!SKILLS[gem.id]).map(gem => gem.id)
+  const ownedSupportIds = character.ownedGems.filter(gem => !!SUPPORTS[gem.id]).map(gem => gem.id)
 
   return (
     <div className="space-y-4">
@@ -26,6 +26,7 @@ export function SkillsPanel() {
         {Array.from({ length: 4 }).map((_, slotIndex) => {
           const equipped = character.equippedSkills[slotIndex]
           const skill = equipped ? SKILLS[equipped.skillId] : null
+          const computed = skill && equipped ? skillDisplayStats(character, equipped, skill, combat) : null
           return (
             <div key={slotIndex} className="bg-[#15161d] border border-[#2e303a] rounded-lg p-3 space-y-2">
               <div className="flex items-center justify-between">
@@ -37,11 +38,13 @@ export function SkillsPanel() {
                   {skill ? skill.name : 'Choose Skill'}
                 </button>
               </div>
-              {skill && (
+              {skill && equipped && computed && (
                 <div className="text-sm text-gray-200">
                   {skill.tags.join(' · ')}
                   <div className="text-xs text-gray-500">
-                    {skill.baseDamageMin}–{skill.baseDamageMax} {skill.damageType} · {skill.cooldownTicks / 10}s
+                    {computed.minDamage}–{computed.maxDamage} {skill.damageType} · {(
+                      computed.cooldownTicks / 10
+                    ).toFixed(1)}s cooldown
                   </div>
                   {(() => {
                     const gem = character.ownedGems.find(g => g.id === skill.id)
@@ -55,7 +58,7 @@ export function SkillsPanel() {
                   })()}
                 </div>
               )}
-              {skill && (
+              {skill && equipped && (
                 <div className="grid grid-cols-5 gap-1">
                   {Array.from({ length: character.supportSlotCount }).map((_, supportIdx) => {
                     const supportId = equipped.supportIds[supportIdx]
@@ -88,7 +91,7 @@ export function SkillsPanel() {
           <div className="bg-[#15161d] border border-[#2e303a] rounded-lg p-6 max-w-md w-full max-h-[80vh] overflow-auto">
             <h3 className="text-lg font-serif text-[#d4a017] mb-4">Choose a Skill</h3>
             <div className="space-y-2">
-              {allSkillIds.map(id => {
+              {Object.keys(SKILLS).map(id => {
                 const skill = SKILLS[id]
                 const owned = ownedSkillIds.includes(id)
                 return (
@@ -117,7 +120,7 @@ export function SkillsPanel() {
           <div className="bg-[#15161d] border border-[#2e303a] rounded-lg p-6 max-w-md w-full max-h-[80vh] overflow-auto">
             <h3 className="text-lg font-serif text-[#d4a017] mb-4">Choose a Support</h3>
             <div className="space-y-2">
-              {allSupportIds.map(id => {
+              {Object.keys(SUPPORTS).map(id => {
                 const support = SUPPORTS[id]
                 const owned = ownedSupportIds.includes(id)
                 const equippedSkill = character.equippedSkills[selectedSupportSlot.skill]

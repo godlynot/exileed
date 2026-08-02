@@ -106,10 +106,20 @@ export const GEMS = {
   // Per-level scaling of base values.
   SKILL_DAMAGE_PER_LEVEL: 0.03, // +3% per level
   SUPPORT_MOD_PER_LEVEL: 0.02,  // +2% per level
+  BLANK_SUPPORT_DROP_CHANCE: 0.08, // Blank supports are the gateway to support-gem ownership.
+  GEM_DROP_CHANCE: 0.08, // Unowned skill/support gems enter inventory and must be claimed.
 } as const
 
 export function gemXpForNextLevel(currentLevel: number): number {
   return GEMS.XP_PER_LEVEL * currentLevel
+}
+
+export function supportSlotCountForCompletedActs(completedActs: Iterable<number>): number {
+  const acts = new Set(completedActs)
+  if (acts.has(8)) return 5
+  if (acts.has(6)) return 4
+  if (acts.has(3)) return 3
+  return 2
 }
 
 export function gemLevelProgress(xp: number, level: number): { nextLevelXp: number; currentLevelXp: number; progress: number } {

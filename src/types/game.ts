@@ -153,7 +153,7 @@ export interface Character {
   // Skills / supports (save data)
   equippedSkills: EquippedSkill[]
   ownedGems: GemProgress[]
-  // Support slot count grows with campaign milestones (2 -> 3 at Act 3 -> 4 at Act 6 -> 5 at Act 9)
+  // Support slot count grows with campaign milestones (2 -> 3 at Act 3 -> 4 at Act 6 -> 5 at Act 8)
   supportSlotCount: number
   // Ascendancy choice-keystone selections (node id -> choice id)
   keystoneChoices: Record<string, string>
@@ -265,6 +265,8 @@ export interface AilmentInstance {
   sourceSkillId?: string
   // Virulent Cirrhosis: this ailment cannot be cleansed and reverses healing
   cirrhosis?: boolean
+  // A linked Epidemic Spread support causes all DOTs on this target to spread on death.
+  spreadOnDeath?: boolean
 }
 
 export interface MomentumState {

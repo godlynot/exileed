@@ -30,7 +30,7 @@ import {
 } from '../data/monsterModifiers.ts'
 import { createMomentumState, gainMomentum, tickMomentumDecay, effectiveCooldownTicks, momentumDamageMultiplier, isMaxMomentum, breakneckRaiseCap } from './momentum.ts'
 import { createAilmentFromSkill, createAilmentFromAura, tickAilments } from './ailments.ts'
-import { getGemLevel, gainGemXpForSkillUse, skillDamageMultiplier } from './gems.ts'
+import { getGemLevel, gainGemXpForSkillUse, skillDamageMultiplier, supportModMultiplier } from './gems.ts'
 
 let eventIdCounter = 0
 
@@ -404,10 +404,12 @@ function recalcCharacter(state: GameState, character: Character): Character {
   return c
 }
 
-function supportsForSkill(equipped: EquippedSkill, skill: Skill): Support[] {
+function linkedSupportsForSkill(equipped: EquippedSkill, skill: Skill): { id: string; support: Support }[] {
   return equipped.supportIds
-    .map(id => SUPPORTS[id])
-    .filter(s => !!s && s.allowedTags.some(tag => skill.tags.includes(tag)))
+    .map(id => ({ id, support: SUPPORTS[id] }))
+    .filter((entry): entry is { id: string; support: Support } =>
+      !!entry.support && entry.support.allowedTags.some(tag => skill.tags.includes(tag)),
+    )
 }
 
 export function aggregateSupportModifiers(supports: Support[], supportIds: string[], character: Character) {
@@ -425,6 +427,57 @@ export function aggregateSupportModifiers(supports: Support[], supportIds: strin
     }
   }
   return { flat, increased, more }
+}
+
+export function skillDisplayStats(
+  character: Character,
+  equipped: EquippedSkill,
+  skill: Skill,
+  combat: CombatState,
+): { minDamage: number; maxDamage: number; cooldownTicks: number } {
+  const linkedSupports = linkedSupportsForSkill(equipped, skill)
+  const supportMods = aggregateSupportModifiers(
+    linkedSupports.map(entry => entry.support),
+    linkedSupports.map(entry => entry.id),
+    character,
+  )
+  const supportActionSpeed = (
+    (supportMods.increased['inc_attack_speed_percent'] ?? 0) +
+    (supportMods.increased['inc_cast_speed_percent'] ?? 0)
+  ) / 100
+  const cooldownTicks = effectiveCooldownTicks(skill.cooldownTicks, combat.momentum, character, supportActionSpeed)
+  const isAttack = skill.tags.includes('attack')
+  const baseMin = skill.baseDamageMin + (isAttack ? character.basePhysicalDamageMin : 0)
+  const baseMax = skill.baseDamageMax + (isAttack ? character.basePhysicalDamageMax : 0)
+  const levelMultiplier = 1 + (character.level - 1) * 0.05
+  const gemMultiplier = skillDamageMultiplier(getGemLevel(character, equipped.skillId))
+  const scaledMin = baseMin * levelMultiplier * gemMultiplier
+  const scaledMax = baseMax * levelMultiplier * gemMultiplier
+  const flatStat = skill.damageType === 'physical'
+    ? 'flat_phys_damage'
+    : skill.damageType === 'fire'
+      ? 'flat_fire_damage'
+      : skill.damageType === 'cold'
+        ? 'flat_cold_damage'
+        : skill.damageType === 'lightning'
+          ? 'flat_lightning_damage'
+          : null
+  const flat = flatStat ? (supportMods.flat[flatStat] ?? 0) * skill.damageEffectiveness : 0
+  const increased = skill.damageType === 'physical'
+    ? (character.increasedPhysicalDamage + (supportMods.increased['inc_phys_damage_percent'] ?? 0) / 100)
+    : character.increasedSpellDamage + (skill.damageType === 'chaos' ? 0 : (supportMods.increased['inc_ele_damage_percent'] ?? 0) / 100)
+  const more = skill.damageType === 'physical'
+    ? character.morePhysicalDamage * (supportMods.more['inc_phys_damage_percent'] ?? 1)
+    : character.moreSpellDamage * (skill.damageType === 'chaos' ? 1 : (supportMods.more['inc_ele_damage_percent'] ?? 1))
+  const specialMore = character.special.moreDamageMultiplier ?? 1
+  const packMultiplier = skill.targeting === 'pack' ? 1.5 : 1
+  const projectileMultiplier = linkedSupports.some(entry => entry.support.special === 'extraProjectile') && skill.tags.includes('projectile') ? 1.25 : 1
+  const multiplier = (1 + increased) * more * specialMore * packMultiplier * projectileMultiplier * momentumDamageMultiplier(combat.momentum, character)
+  return {
+    minDamage: Math.max(1, Math.floor((scaledMin + flat) * multiplier)),
+    maxDamage: Math.max(1, Math.floor((scaledMax + flat) * multiplier)),
+    cooldownTicks,
+  }
 }
 
 function isFirstHit(combat: CombatState, monsterId: string): boolean {
@@ -502,14 +555,25 @@ export function skillDamage(
   isHit: boolean
   nextEquipped: EquippedSkill
   ailments: AilmentInstance[]
+  targetCount: number
 } {
-  const supports = supportsForSkill(equipped, skill)
-  const supportMods = aggregateSupportModifiers(supports, equipped.supportIds, character)
+  const linkedSupports = linkedSupportsForSkill(equipped, skill)
+  const supports = linkedSupports.map(entry => entry.support)
+  const supportIds = linkedSupports.map(entry => entry.id)
+  const supportMods = aggregateSupportModifiers(supports, supportIds, character)
   const supportActionSpeed = ((supportMods.increased['inc_attack_speed_percent'] ?? 0) + (supportMods.increased['inc_cast_speed_percent'] ?? 0)) / 100
 
   const isHit = character.special.alwaysHit ? true : Math.random() <= hitChance(character.accuracy, monster.evasion, evasionStacks)
   if (!isHit) {
-    return { damage: 0, damageType: skill.damageType, crit: false, isHit: false, nextEquipped: { ...equipped, cooldownRemaining: effectiveCooldownTicks(skill.cooldownTicks, combat.momentum, character, supportActionSpeed) }, ailments: [] }
+    return {
+      damage: 0,
+      damageType: skill.damageType,
+      crit: false,
+      isHit: false,
+      nextEquipped: { ...equipped, cooldownRemaining: effectiveCooldownTicks(skill.cooldownTicks, combat.momentum, character, supportActionSpeed) },
+      ailments: [],
+      targetCount: rangeBandHitCount(skill, combat.currentPack.length || 1),
+    }
   }
 
   const effectiveness = skill.damageEffectiveness
@@ -546,6 +610,9 @@ export function skillDamage(
   // Support specials
   const hasExtraProjectile = supports.some(s => s.special === 'extraProjectile') && skill.tags.includes('projectile')
   const hasConvertChaos = supports.some(s => s.special === 'convertPhysicalToChaos')
+  const hasAilmentDuration = supports.some(s => s.special === 'ailmentDuration')
+  const hasExtraPackTarget = supports.some(s => s.special === 'extraPackTarget') && skill.tags.includes('aoe')
+  const hasSpreadOnDeath = supports.some(s => s.special === 'spreadDotOnDeath') && skill.tags.includes('dot')
 
   let damage = 0
   if (skill.damageType === 'physical') {
@@ -634,25 +701,42 @@ export function skillDamage(
   const ailments: AilmentInstance[] = []
   if (skill.appliesAilment) {
     const ailment = createAilmentFromSkill(skill.appliesAilment, Math.floor(damage), skill.id)
+    if (hasAilmentDuration) {
+      const durationSupport = linkedSupports.find(entry => entry.support.special === 'ailmentDuration')
+      const durationMultiplier = 1 + 0.25 * supportModMultiplier(getGemLevel(character, durationSupport?.id ?? ''))
+      ailment.remainingTicks = Math.max(1, Math.floor(ailment.remainingTicks * durationMultiplier))
+    }
+    if (hasSpreadOnDeath) ailment.spreadOnDeath = true
     ailments.push(ailment)
   }
 
   // Gear chance-to-ailment procs
   if (Math.random() * 100 < (character.chanceToBleed ?? 0)) {
-    ailments.push(createAilmentFromSkill({ type: 'bleed', damagePerSecond: Math.max(1, Math.floor(damage * 0.2)), durationSeconds: 5 }, Math.floor(damage), skill.id))
+    const ailment = createAilmentFromSkill({ type: 'bleed', damagePerSecond: Math.max(1, Math.floor(damage * 0.2)), durationSeconds: 5 }, Math.floor(damage), skill.id)
+    if (hasSpreadOnDeath) ailment.spreadOnDeath = true
+    ailments.push(ailment)
   }
   if (Math.random() * 100 < (character.chanceToShock ?? 0)) {
-    ailments.push(createAilmentFromSkill({ type: 'burn', damagePerSecond: Math.max(1, Math.floor(damage * 0.15)), durationSeconds: 4 }, Math.floor(damage), skill.id))
+    const ailment = createAilmentFromSkill({ type: 'burn', damagePerSecond: Math.max(1, Math.floor(damage * 0.15)), durationSeconds: 4 }, Math.floor(damage), skill.id)
+    if (hasSpreadOnDeath) ailment.spreadOnDeath = true
+    ailments.push(ailment)
   }
   if (Math.random() * 100 < (character.chanceToInflictDespair ?? 0)) {
-    ailments.push(createAilmentFromSkill({ type: 'poison', damagePerSecond: Math.max(1, Math.floor(damage * 0.25)), durationSeconds: 6 }, Math.floor(damage), skill.id))
+    const ailment = createAilmentFromSkill({ type: 'poison', damagePerSecond: Math.max(1, Math.floor(damage * 0.25)), durationSeconds: 6 }, Math.floor(damage), skill.id)
+    if (hasSpreadOnDeath) ailment.spreadOnDeath = true
+    ailments.push(ailment)
   }
 
   if (monster.rarity === 'boss') {
     damage *= (1 + (character.damageVsBossesPercent ?? 0) / 100)
   }
 
-  return { damage: Math.max(1, Math.floor(damage)), damageType: skill.damageType, crit: isCrit, isHit: true, nextEquipped, ailments }
+  const baseTargetCount = rangeBandHitCount(skill, combat.currentPack.length || 1)
+  const targetCount = hasExtraPackTarget && !skill.tags.includes('allRange')
+    ? Math.min(combat.currentPack.length || 1, baseTargetCount + 1)
+    : baseTargetCount
+
+  return { damage: Math.max(1, Math.floor(damage)), damageType: skill.damageType, crit: isCrit, isHit: true, nextEquipped, ailments, targetCount }
 }
 
 export interface SkillHitOutcome {
@@ -687,8 +771,6 @@ export function processSkillHits(character: Character, monster: Monster, combat:
   let ailments: AilmentInstance[] = []
   const leveledUp: { gemId: string; newLevel: number }[] = []
   const hitsBySkill: SkillHitOutcome[] = []
-  const packSize = combat.currentPack.length > 0 ? combat.currentPack.length : 1
-
   for (const equipped of character.equippedSkills) {
     const skill = SKILLS[equipped.skillId]
     if (!skill) {
@@ -719,7 +801,7 @@ export function processSkillHits(character: Character, monster: Monster, combat:
       isHit: result.isHit,
       crit: result.crit,
       ailments: result.ailments,
-      targetCount: rangeBandHitCount(skill, packSize),
+      targetCount: result.targetCount,
     })
   }
 

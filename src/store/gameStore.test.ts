@@ -2,6 +2,9 @@ import { describe, it, expect, beforeEach } from 'bun:test'
 import { useGameStore } from './gameStore.ts'
 import { loadGame } from '../systems/save.ts'
 import { computeOfflineSeconds } from '../systems/offlineProgress.ts'
+import { createBlankSupport, createGemItem } from '../systems/items.ts'
+import { SKILLS } from '../data/skills.ts'
+import { SUPPORTS } from '../data/supports.ts'
 
 // bun's test runtime has no localStorage; provide an in-memory shim so
 // saveGame/loadGame actually persist during tests.
@@ -48,6 +51,92 @@ describe('game store dev helpers', () => {
     // Combat should point at the first member as the active target
     expect(useGameStore.getState().combat.monster).toBe(pack[0].monster)
     expect(useGameStore.getState().combat.monsterLife).toBe(pack[0].currentLife)
+  })
+})
+
+describe('support acquisition', () => {
+  it('converts a blank support into an owned support and persists the result', () => {
+    const state = useGameStore.getState()
+    const blank = createBlankSupport(5)
+    const supportId = Object.keys(SUPPORTS).find(id => !state.character.ownedGems.some(gem => gem.id === id)) ?? Object.keys(SUPPORTS)[0]
+    useGameStore.setState({
+      ...state,
+      inventory: { ...state.inventory, items: [blank] },
+    })
+
+    useGameStore.getState().convertBlankSupport(blank.id, supportId)
+
+    const next = useGameStore.getState()
+    expect(next.inventory.items).toHaveLength(0)
+    expect(next.character.ownedGems.some(gem => gem.id === supportId)).toBe(true)
+    expect(loadGame()?.character.ownedGems.some(gem => gem.id === supportId)).toBe(true)
+  })
+
+  it('does not consume a blank support when the selected support is already owned', () => {
+    const state = useGameStore.getState()
+    const blank = createBlankSupport(5)
+    const supportId = Object.keys(SUPPORTS)[0]
+    useGameStore.setState({
+      ...state,
+      inventory: { ...state.inventory, items: [blank] },
+      character: {
+        ...state.character,
+        ownedGems: [...state.character.ownedGems, { id: supportId, level: 1, xp: 0 }],
+      },
+    })
+
+    useGameStore.getState().convertBlankSupport(blank.id, supportId)
+
+    const next = useGameStore.getState()
+    expect(next.inventory.items).toHaveLength(1)
+    expect(next.inventory.items[0].id).toBe(blank.id)
+  })
+
+  it('removes a duplicate gem drop without adding duplicate ownership', () => {
+    const state = useGameStore.getState()
+    const skillId = state.character.ownedGems.find(gem => SKILLS[gem.id])?.id ?? Object.keys(SKILLS)[0]
+    const duplicate = createGemItem('skillGem', skillId, 5)
+    expect(duplicate).not.toBeNull()
+    useGameStore.setState({
+      ...state,
+      inventory: { ...state.inventory, items: [duplicate!] },
+      character: {
+        ...state.character,
+        ownedGems: [
+          ...state.character.ownedGems.filter(gem => gem.id !== skillId),
+          { id: skillId, level: 3, xp: 12 },
+        ],
+      },
+    })
+
+    useGameStore.getState().claimGemItem(duplicate!.id)
+
+    const next = useGameStore.getState()
+    expect(next.inventory.items).toHaveLength(0)
+    expect(next.character.ownedGems.filter(gem => gem.id === skillId)).toHaveLength(1)
+    expect(next.character.ownedGems.find(gem => gem.id === skillId)?.level).toBe(3)
+  })
+
+  it('discards progression items that can no longer be converted', () => {
+    const state = useGameStore.getState()
+    const blank = createBlankSupport(5)
+    useGameStore.setState({
+      ...state,
+      inventory: { ...state.inventory, items: [blank] },
+      character: {
+        ...state.character,
+        ownedGems: [
+          ...state.character.ownedGems,
+          ...Object.keys(SUPPORTS)
+            .filter(id => !state.character.ownedGems.some(gem => gem.id === id))
+            .map(id => ({ id, level: 1, xp: 0 })),
+        ],
+      },
+    })
+
+    useGameStore.getState().discardItem(blank.id)
+
+    expect(useGameStore.getState().inventory.items).toHaveLength(0)
   })
 })
 

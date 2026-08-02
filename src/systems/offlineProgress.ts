@@ -5,6 +5,7 @@ import {
   OFFLINE_PROGRESS_MIN_SECONDS,
   TICKS_PER_SECOND,
 } from '../data/balance.ts'
+import { addProgressionDropsToInventory } from './items.ts'
 import { simulateTick } from './combat.ts'
 
 /**
@@ -62,10 +63,35 @@ export async function simulateOfflineProgress(
   while (ticksDone < totalTicks) {
     const batch = Math.min(chunkTicks, totalTicks - ticksDone)
     for (let i = 0; i < batch; i++) {
-      const { state: next, events } = simulateTick(sim)
+      const { state: next, events: tickEvents } = simulateTick(sim)
       // The store normally advances tickCounter per tick; do it here so
       // periodic timers (storm ticks, DOT cadence, etc.) fire correctly.
       sim = { ...next, tickCounter: next.tickCounter + 1 }
+      let events = tickEvents
+      const killCount = events.filter(event => event.type === 'monsterDied').length
+      const zone = sim.zones.find(candidate => candidate.id === sim.activeZoneId)
+      if (zone && killCount > 0) {
+        const ownedGemIds = [
+          ...sim.character.ownedGems.map(gem => gem.id),
+          ...sim.inventory.items.flatMap(item => item.gemId ? [item.gemId] : []),
+        ]
+        const progression = addProgressionDropsToInventory(
+          sim.inventory.items,
+          sim.inventory.maxSize,
+          zone.level,
+          ownedGemIds,
+          killCount,
+        )
+        sim = { ...sim, inventory: { ...sim.inventory, items: progression.items } }
+        const progressionEvents = progression.drops.map(dropped => ({
+          id: `progression_${dropped.id}`,
+          timestamp: Date.now(),
+          type: 'itemDropped' as const,
+          itemId: dropped.id,
+          rarity: dropped.rarity,
+        }))
+        events = [...events, ...progressionEvents]
+      }
       lastEvents = [...lastEvents, ...events].slice(-50)
       for (const event of events) {
         if (event.type === 'xpGained') xpGained += event.amount

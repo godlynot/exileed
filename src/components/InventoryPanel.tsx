@@ -2,18 +2,24 @@ import { useState } from 'react'
 import { useGameStore } from '../store/gameStore.ts'
 import { ItemTooltip } from './ItemTooltip.tsx'
 import { CURRENCIES } from '../data/currencies.ts'
-import { rarityTextClass } from '../types/item.ts'
+import { isBlankSupport, isGemItem, isNonEquipmentItem, rarityTextClass } from '../types/item.ts'
 import type { Item } from '../types/item.ts'
+import { SUPPORTS } from '../data/supports.ts'
 
 export function InventoryPanel() {
   const inventory = useGameStore(state => state.inventory)
   const currencies = useGameStore(state => state.currencies)
   const equipItem = useGameStore(state => state.equipItem)
   const sellItem = useGameStore(state => state.sellItem)
+  const discardItem = useGameStore(state => state.discardItem)
   const useCurrency = useGameStore(state => state.useCurrency)
   const toggleAutoSell = useGameStore(state => state.toggleAutoSell)
+  const claimGemItem = useGameStore(state => state.claimGemItem)
+  const convertBlankSupport = useGameStore(state => state.convertBlankSupport)
+  const ownedGems = useGameStore(state => state.character.ownedGems)
 
   const [selectedItem, setSelectedItem] = useState<Item | null>(null)
+  const [selectedSupportId, setSelectedSupportId] = useState('')
   const [hoveredItem, setHoveredItem] = useState<Item | null>(null)
 
   return (
@@ -74,29 +80,76 @@ export function InventoryPanel() {
         <div className="border border-[#2e303a] rounded p-3 bg-[#15161d]">
           <ItemTooltip item={selectedItem} />
           <div className="mt-3 flex flex-wrap gap-2">
-            <button
-              onClick={() => { equipItem(selectedItem); setSelectedItem(null) }}
-              className="px-3 py-1 bg-[#d4a017] text-black rounded text-sm font-medium hover:bg-[#e5b12a]"
-            >
-              Equip
-            </button>
-            <button
-              onClick={() => { sellItem(selectedItem.id); setSelectedItem(null) }}
-              className="px-3 py-1 bg-[#2e303a] text-gray-200 rounded text-sm hover:bg-[#3e404a]"
-            >
-              Sell
-            </button>
-            <div className="w-full" />
-            {Object.entries(CURRENCIES).filter(([id]) => id !== 'penance').map(([id, currency]) => (
-              <button
-                key={id}
-                onClick={() => useCurrency(selectedItem.id, id)}
-                disabled={(currencies[id] || 0) <= 0}
-                className="px-2 py-1 text-xs rounded bg-[#1f2028] border border-[#2e303a] hover:bg-[#2e303a] disabled:opacity-50"
-              >
-                {currency.name} ({currencies[id] || 0})
-              </button>
-            ))}
+            {isNonEquipmentItem(selectedItem) ? (
+              isGemItem(selectedItem) ? (
+                <>
+                  <button
+                    onClick={() => { claimGemItem(selectedItem.id); setSelectedItem(null) }}
+                    className="px-3 py-1 bg-[#d4a017] text-black rounded text-sm font-medium hover:bg-[#e5b12a]"
+                  >
+                    Claim Gem
+                  </button>
+                  <button
+                    onClick={() => { discardItem(selectedItem.id); setSelectedItem(null) }}
+                    className="px-3 py-1 bg-[#2e303a] text-gray-200 rounded text-sm hover:bg-[#3e404a]"
+                  >
+                    Discard
+                  </button>
+                </>
+              ) : isBlankSupport(selectedItem) ? (
+                <>
+                  <select
+                    value={selectedSupportId}
+                    onChange={event => setSelectedSupportId(event.target.value)}
+                    className="px-2 py-1 bg-[#1f2028] border border-[#2e303a] rounded text-sm text-gray-200"
+                  >
+                    <option value="">Choose support…</option>
+                    {Object.values(SUPPORTS)
+                      .filter(support => !ownedGems.some(gem => gem.id === support.id))
+                      .map(support => <option key={support.id} value={support.id}>{support.name}</option>)}
+                  </select>
+                  <button
+                    disabled={!selectedSupportId}
+                    onClick={() => { convertBlankSupport(selectedItem.id, selectedSupportId); setSelectedItem(null); setSelectedSupportId('') }}
+                    className="px-3 py-1 bg-[#d4a017] text-black rounded text-sm font-medium hover:bg-[#e5b12a] disabled:opacity-50"
+                  >
+                    Convert
+                  </button>
+                  <button
+                    onClick={() => { discardItem(selectedItem.id); setSelectedItem(null); setSelectedSupportId('') }}
+                    className="px-3 py-1 bg-[#2e303a] text-gray-200 rounded text-sm hover:bg-[#3e404a]"
+                  >
+                    Discard
+                  </button>
+                </>
+              ) : null
+            ) : (
+              <>
+                <button
+                  onClick={() => { equipItem(selectedItem); setSelectedItem(null) }}
+                  className="px-3 py-1 bg-[#d4a017] text-black rounded text-sm font-medium hover:bg-[#e5b12a]"
+                >
+                  Equip
+                </button>
+                <button
+                  onClick={() => { sellItem(selectedItem.id); setSelectedItem(null) }}
+                  className="px-3 py-1 bg-[#2e303a] text-gray-200 rounded text-sm hover:bg-[#3e404a]"
+                >
+                  Sell
+                </button>
+                <div className="w-full" />
+                {Object.entries(CURRENCIES).filter(([id]) => id !== 'penance').map(([id, currency]) => (
+                  <button
+                    key={id}
+                    onClick={() => useCurrency(selectedItem.id, id)}
+                    disabled={(currencies[id] || 0) <= 0}
+                    className="px-2 py-1 text-xs rounded bg-[#1f2028] border border-[#2e303a] hover:bg-[#2e303a] disabled:opacity-50"
+                  >
+                    {currency.name} ({currencies[id] || 0})
+                  </button>
+                ))}
+              </>
+            )}
           </div>
         </div>
       )}

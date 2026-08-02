@@ -1,6 +1,9 @@
-import type { Affix, AffixDefinition, Equipment, EquipmentBonus, Item, ItemRarity, ItemSlot } from '../types/item.ts'
+import type { Affix, AffixDefinition, Equipment, EquipmentBonus, Item, ItemKind, ItemRarity, ItemSlot } from '../types/item.ts'
 import type { Attributes, Character, ClassId } from '../types/game.ts'
 import { BASE_ITEMS } from '../data/items.ts'
+import { SKILLS } from '../data/skills.ts'
+import { SUPPORTS } from '../data/supports.ts'
+import { GEMS } from '../data/balance.ts'
 import { ALL_AFFIXES } from '../data/affixes.ts'
 import { CLASSES } from '../data/classes.ts'
 import { CHARACTER, DAMAGE, RECOVERY, monsterScalingMultiplier } from '../data/balance.ts'
@@ -9,6 +12,103 @@ let itemIdCounter = 0
 
 export function generateItemId(): string {
   return `item_${Date.now()}_${itemIdCounter++}`
+}
+
+/** Creates the inventory item that can be converted into one unowned support gem. */
+export function createBlankSupport(itemLevel: number): Item {
+  return {
+    id: generateItemId(),
+    baseId: 'blank_support',
+    name: 'Blank Support',
+    kind: 'blankSupport',
+    slot: 'ring',
+    rarity: 'unique',
+    itemLevel: Math.max(1, Math.floor(itemLevel)),
+    affixes: [],
+    physicalDamageMin: 0,
+    physicalDamageMax: 0,
+    flatLightningDamageMin: 0,
+    flatLightningDamageMax: 0,
+    flatColdDamageMin: 0,
+    flatColdDamageMax: 0,
+    attackRate: 0,
+    armour: 0,
+    evasion: 0,
+    energyShield: 0,
+    life: 0,
+    chanceToBleed: 0,
+    chanceToShock: 0,
+    chanceToInflictDespair: 0,
+    movementSpeed: 0,
+    increasedArmourPercent: 0,
+    increasedEvasionPercent: 0,
+    increasedAccuracyPercent: 0,
+    increasedEsPercent: 0,
+    increasedMaxLifePercent: 0,
+    damageVsBossesPercent: 0,
+    goldFindPercent: 0,
+  }
+}
+
+function createEmptyGemItem(kind: ItemKind, gemId: string, itemLevel: number, name: string): Item {
+  return {
+    id: generateItemId(),
+    baseId: gemId,
+    name,
+    kind,
+    gemId,
+    slot: 'ring',
+    rarity: 'unique',
+    itemLevel: Math.max(1, Math.floor(itemLevel)),
+    affixes: [],
+    physicalDamageMin: 0,
+    physicalDamageMax: 0,
+    flatLightningDamageMin: 0,
+    flatLightningDamageMax: 0,
+    flatColdDamageMin: 0,
+    flatColdDamageMax: 0,
+    attackRate: 0,
+    armour: 0,
+    evasion: 0,
+    energyShield: 0,
+    life: 0,
+    chanceToBleed: 0,
+    chanceToShock: 0,
+    chanceToInflictDespair: 0,
+    movementSpeed: 0,
+    increasedArmourPercent: 0,
+    increasedEvasionPercent: 0,
+    increasedAccuracyPercent: 0,
+    increasedEsPercent: 0,
+    increasedMaxLifePercent: 0,
+    damageVsBossesPercent: 0,
+    goldFindPercent: 0,
+  }
+}
+
+export function createGemItem(kind: 'skillGem' | 'supportGem', gemId: string, itemLevel: number): Item | null {
+  const catalog = kind === 'skillGem' ? SKILLS : SUPPORTS
+  const gem = catalog[gemId]
+  return gem ? createEmptyGemItem(kind, gemId, itemLevel, gem.name) : null
+}
+
+/** Returns an unowned skill/support gem from a monster drop, or null when no gem drops. */
+export function dropGemItem(zoneLevel: number, ownedGemIds: string[]): Item | null {
+  if (Math.random() >= GEMS.GEM_DROP_CHANCE) return null
+  const owned = new Set(ownedGemIds)
+  const skillIds = Object.keys(SKILLS).filter(id => !owned.has(id))
+  const supportIds = Object.keys(SUPPORTS).filter(id => !owned.has(id))
+  if (skillIds.length === 0 && supportIds.length === 0) return null
+
+  const preferSkill = Math.random() < 0.4
+  const ids = preferSkill && skillIds.length > 0
+    ? skillIds
+    : supportIds.length > 0
+      ? supportIds
+      : skillIds
+  const gemId = ids[Math.floor(Math.random() * ids.length)]
+  const kind = supportIds.includes(gemId) ? 'supportGem' : 'skillGem'
+  return createGemItem(kind, gemId, zoneLevel)
 }
 
 export function getAvailableTier(def: AffixDefinition, itemLevel: number): number | null {
@@ -213,6 +313,7 @@ export function createItem(baseId: string, itemLevel: number, rarity: ItemRarity
     id: generateItemId(),
     baseId,
     name: base.name,
+    kind: 'equipment',
     slot: base.slot,
     rarity,
     itemLevel,
@@ -556,6 +657,47 @@ export function determineDropRarity(zoneLevel: number, modifiers: DropModifiers 
   if (roll < rareChance) return 'rare'
   if (roll < rareChance + magicChance) return 'magic'
   return 'normal'
+}
+
+export function dropBlankSupport(itemLevel: number): Item {
+  return createBlankSupport(itemLevel)
+}
+
+/** Rolls progression loot separately from equipment so it cannot be auto-sold. */
+export function rollProgressionDrops(zoneLevel: number, ownedGemIds: string[]): Item[] {
+  const drops: Item[] = []
+  const gemDrop = dropGemItem(zoneLevel, ownedGemIds)
+  if (gemDrop) drops.push(gemDrop)
+
+  const owned = new Set(ownedGemIds)
+  const hasUnownedSupport = Object.keys(SUPPORTS).some(id => !owned.has(id))
+  if (hasUnownedSupport && Math.random() < GEMS.BLANK_SUPPORT_DROP_CHANCE) {
+    drops.push(dropBlankSupport(zoneLevel))
+  }
+  return drops
+}
+
+export function addProgressionDropsToInventory(
+  items: Item[],
+  maxSize: number,
+  zoneLevel: number,
+  ownedGemIds: string[],
+  killCount: number,
+): { items: Item[]; drops: Item[] } {
+  const nextItems = [...items]
+  const drops: Item[] = []
+  const reservedGemIds = new Set(ownedGemIds)
+
+  for (let kill = 0; kill < killCount && nextItems.length < maxSize; kill++) {
+    for (const dropped of rollProgressionDrops(zoneLevel, [...reservedGemIds])) {
+      if (nextItems.length >= maxSize) break
+      nextItems.push(dropped)
+      drops.push(dropped)
+      if (dropped.gemId) reservedGemIds.add(dropped.gemId)
+    }
+  }
+
+  return { items: nextItems, drops }
 }
 
 export function dropItem(zoneLevel: number, modifiers: DropModifiers = {}): Item | null {

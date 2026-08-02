@@ -69,10 +69,25 @@ export interface BaseItem {
   implicit?: Affix[]
 }
 
+export type ItemKind = 'equipment' | 'blankSupport' | 'skillGem' | 'supportGem'
+
+export function isGemItem(item: Item): boolean {
+  return item.kind === 'skillGem' || item.kind === 'supportGem'
+}
+
+export function isNonEquipmentItem(item: Item): boolean {
+  return item.kind !== undefined && item.kind !== 'equipment'
+}
+
 export interface Item {
   id: string
   baseId: string
   name: string
+  // Blank supports use the normal inventory/save path but are never equippable gear.
+  // Older saves omit this field, which means equipment.
+  kind?: ItemKind
+  // Gem drops carry the catalog id until the player converts them into owned progress.
+  gemId?: string
   slot: ItemSlot
   rarity: ItemRarity
   itemLevel: number
@@ -102,6 +117,10 @@ export interface Item {
   increasedMaxLifePercent: number
   damageVsBossesPercent: number
   goldFindPercent: number
+}
+
+export function isBlankSupport(item: Item): boolean {
+  return item.kind === 'blankSupport'
 }
 
 export interface Equipment {

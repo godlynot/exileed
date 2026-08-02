@@ -1,10 +1,11 @@
 import { create } from 'zustand'
 import type { Character, CombatState, GameState, Monster, Zone } from '../types/game.ts'
 import type { Equipment, InventoryState, Item } from '../types/item.ts'
+import { isBlankSupport, isNonEquipmentItem } from '../types/item.ts'
 import { CLASSES, CLASS_ROOT_MAP } from '../data/classes.ts'
 import type { ClassId } from '../types/game.ts'
 import { ZONES, MONSTERS } from '../data/zones.ts'
-import { TICKS_PER_SECOND, experienceForLevel } from '../data/balance.ts'
+import { supportSlotCountForCompletedActs, TICKS_PER_SECOND, experienceForLevel } from '../data/balance.ts'
 import { PASSIVE_TREE } from '../data/passiveTree.ts'
 import { TRIALS, ASCENDANCIES } from '../data/ascendancies.ts'
 import { applyPassiveStats, applyAscendancyStats, allocateNode, refundNode } from '../systems/passives.ts'
@@ -14,7 +15,9 @@ import { saveGame, loadGame, exportSave as exportSaveString, importSave } from '
 import { computeOfflineSeconds } from '../systems/offlineProgress.ts'
 import type { OfflineSummary } from '../types/game.ts'
 import { BASE_ITEMS, STARTER_ITEMS } from '../data/items.ts'
-import { createItem, applyOrb, recalculateCharacterFromEquipment } from '../systems/items.ts'
+import { SUPPORTS } from '../data/supports.ts'
+import { SKILLS } from '../data/skills.ts'
+import { addProgressionDropsToInventory, createItem, applyOrb, recalculateCharacterFromEquipment } from '../systems/items.ts'
 
 const SAVE_INTERVAL_TICKS = TICKS_PER_SECOND * 30
 
@@ -233,6 +236,9 @@ interface GameActions {
   equipItem: (item: Item) => void
   unequipItem: (slot: keyof Equipment) => void
   sellItem: (itemId: string) => void
+  discardItem: (itemId: string) => void
+  convertBlankSupport: (itemId: string, supportId: string) => void
+  claimGemItem: (itemId: string) => void
   useCurrency: (itemId: string, currencyId: string) => void
   toggleAutoSell: (type: 'normal' | 'magic') => void
   allocateNode: (nodeId: string) => void
@@ -284,6 +290,37 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
       // Rolling combat event buffer for live UI (last 50 events)
       nextState.combat.events = [...state.combat.events, ...events].slice(-50)
 
+      const zone = nextState.zones.find(candidate => candidate.id === nextState.activeZoneId)
+      const killCount = events.filter(event => event.type === 'monsterDied').length
+      if (zone && killCount > 0) {
+        const ownedGemIds = [
+          ...nextState.character.ownedGems.map(gem => gem.id),
+          ...nextState.inventory.items.flatMap(item => item.gemId ? [item.gemId] : []),
+        ]
+        const progression = addProgressionDropsToInventory(
+          nextState.inventory.items,
+          nextState.inventory.maxSize,
+          zone.level,
+          ownedGemIds,
+          killCount,
+        )
+        nextState.inventory = { ...nextState.inventory, items: progression.items }
+        const progressionEvents = progression.drops.map(dropped => ({
+          id: `progression_${dropped.id}`,
+          timestamp: Date.now(),
+          type: 'itemDropped' as const,
+          itemId: dropped.id,
+          rarity: dropped.rarity,
+        }))
+        nextState.combat.events = [...nextState.combat.events, ...progressionEvents].slice(-50)
+      }
+
+      const completedActs = nextState.zones.filter(candidate => candidate.killProgress >= 100).map(candidate => candidate.act)
+      const supportSlotCount = supportSlotCountForCompletedActs(completedActs)
+      if (nextState.character.supportSlotCount !== supportSlotCount) {
+        nextState.character = { ...nextState.character, supportSlotCount }
+      }
+
       // Periodic auto-save
       const shouldSave = Math.random() < 1 / SAVE_INTERVAL_TICKS
       if (shouldSave) {
@@ -304,6 +341,8 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
 
   equipItem: (item: Item) => {
     set(state => {
+      const inventoryItem = state.inventory.items.find(i => i.id === item.id)
+      if (!inventoryItem || isNonEquipmentItem(inventoryItem)) return state
       const equipment = { ...state.equipment }
       let existing: Item | null = null
       let targetSlot: keyof Equipment
@@ -338,12 +377,75 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
   sellItem: (itemId: string) => {
     set(state => {
       const item = state.inventory.items.find(i => i.id === itemId)
-      if (!item) return state
+      if (!item || isNonEquipmentItem(item)) return state
       const inventoryItems = state.inventory.items.filter(i => i.id !== itemId)
       const currencies = { ...state.currencies }
       currencies['gold'] = (currencies['gold'] || 0) + Math.max(1, Math.floor(item.itemLevel * 3)) * (item.rarity === 'rare' ? 3 : item.rarity === 'magic' ? 2 : 1)
       return { ...state, inventory: { ...state.inventory, items: inventoryItems }, currencies }
     })
+  },
+
+  convertBlankSupport: (itemId: string, supportId: string) => {
+    let persistedState: GameState | null = null
+    set(state => {
+      const item = state.inventory.items.find(i => i.id === itemId)
+      const support = SUPPORTS[supportId]
+      if (!item || !isBlankSupport(item) || !support) return state
+      if (state.character.ownedGems.some(gem => gem.id === supportId)) return state
+
+      const nextState = {
+        ...state,
+        inventory: { ...state.inventory, items: state.inventory.items.filter(i => i.id !== itemId) },
+        character: {
+          ...state.character,
+          ownedGems: [...state.character.ownedGems, { id: supportId, level: 1, xp: 0 }],
+        },
+      }
+      persistedState = nextState
+      return nextState
+    })
+    // Converting is an explicit reward claim; persist it immediately rather than
+    // waiting for the randomized autosave window.
+    if (persistedState) saveGame(persistedState)
+  },
+
+  discardItem: (itemId: string) => {
+    let persistedState: GameState | null = null
+    set(state => {
+      const item = state.inventory.items.find(candidate => candidate.id === itemId)
+      if (!item || !isNonEquipmentItem(item)) return state
+      const nextState = {
+        ...state,
+        inventory: { ...state.inventory, items: state.inventory.items.filter(candidate => candidate.id !== itemId) },
+      }
+      persistedState = nextState
+      return nextState
+    })
+    if (persistedState) saveGame(persistedState)
+  },
+
+  claimGemItem: (itemId: string) => {
+    let persistedState: GameState | null = null
+    set(state => {
+      const item = state.inventory.items.find(i => i.id === itemId)
+      if (!item || (item.kind !== 'skillGem' && item.kind !== 'supportGem') || !item.gemId) return state
+      const catalog = item.kind === 'skillGem' ? SKILLS : SUPPORTS
+      if (!catalog[item.gemId]) return state
+
+      const nextState = {
+        ...state,
+        inventory: { ...state.inventory, items: state.inventory.items.filter(i => i.id !== itemId) },
+        character: state.character.ownedGems.some(gem => gem.id === item.gemId)
+          ? state.character
+          : {
+              ...state.character,
+              ownedGems: [...state.character.ownedGems, { id: item.gemId, level: 1, xp: 0 }],
+            },
+      }
+      persistedState = nextState
+      return nextState
+    })
+    if (persistedState) saveGame(persistedState)
   },
 
   useCurrency: (itemId: string, currencyId: string) => {
@@ -352,6 +454,7 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
       const itemIndex = state.inventory.items.findIndex(i => i.id === itemId)
       if (itemIndex === -1) return state
       const item = state.inventory.items[itemIndex]
+      if (isNonEquipmentItem(item)) return state
       const newItem = applyOrb(item, currencyId)
       if (newItem === item) return state
       const inventoryItems = [...state.inventory.items]
@@ -377,8 +480,15 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
   },
 
   applyOfflineProgress: (nextState: GameState, summary: OfflineSummary) => {
+    const completedActs = nextState.zones.filter(zone => zone.killProgress >= 100).map(zone => zone.act)
+    const progressedState = nextState.character.supportSlotCount === supportSlotCountForCompletedActs(completedActs)
+      ? nextState
+      : {
+          ...nextState,
+          character: { ...nextState.character, supportSlotCount: supportSlotCountForCompletedActs(completedActs) },
+        }
     const stamped = {
-      ...nextState,
+      ...progressedState,
       offlineSummary: summary,
       offlineSeconds: 0,
       lastSaveTime: Date.now(),
@@ -497,6 +607,7 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
     set(state => {
       const equippedSkills = [...state.character.equippedSkills]
       if (slotIndex < 0 || slotIndex >= 4) return state
+      if (!SKILLS[skillId] || !state.character.ownedGems.some(gem => gem.id === skillId)) return state
       equippedSkills[slotIndex] = { skillId, supportIds: [], cooldownRemaining: 0, hitCounter: 0 }
       const character = recalcCharacter(state, { ...state.character, equippedSkills })
       return { ...state, character }
@@ -517,7 +628,11 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
     set(state => {
       const equippedSkills = [...state.character.equippedSkills]
       const skill = equippedSkills[skillSlotIndex]
-      if (!skill) return state
+      const skillData = skill ? SKILLS[skill.skillId] : undefined
+      const support = SUPPORTS[supportId]
+      if (!skill || !skillData || !support) return state
+      if (!state.character.ownedGems.some(gem => gem.id === supportId)) return state
+      if (!support.allowedTags.some(tag => skillData.tags.includes(tag))) return state
       if (skill.supportIds.length >= state.character.supportSlotCount) return state
       if (skill.supportIds.includes(supportId)) return state
       equippedSkills[skillSlotIndex] = { ...skill, supportIds: [...skill.supportIds, supportId] }
