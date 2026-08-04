@@ -30,6 +30,9 @@ export function CraftingPanel() {
       <div className="border-t border-[#2e303a] pt-4">
         <h3 className="text-sm font-medium text-gray-300 mb-2">Select an item to craft</h3>
         <div className="grid grid-cols-4 gap-2 max-h-64 overflow-y-auto scrollbar-thin">
+          {inventory.items.length === 0 && (
+            <div className="col-span-4 text-xs text-gray-500 text-center py-4">No items in inventory</div>
+          )}
           {inventory.items.map(item => (
             <button
               key={item.id}
@@ -46,6 +49,21 @@ export function CraftingPanel() {
           ))}
         </div>
       </div>
+
+      {/* Penance orb — standalone, does not require an item selection */}
+      {(currencies['penance'] || 0) > 0 && (
+        <div className="border border-[#2e303a] rounded p-3 bg-[#15161d]">
+          <div className="text-xs text-gray-400 mb-2">
+            <span className="text-[#2ecc71]">Orb of Penance</span> — Refunds one allocated passive skill point.
+          </div>
+          <button
+            onClick={() => useCurrency('', 'penance')}
+            className="px-3 py-1 text-xs rounded bg-[#1f2028] border border-[#2ecc71]/30 hover:bg-[#2a3a2a] text-[#2ecc71]"
+          >
+            Use Orb of Penance ({currencies['penance'] || 0})
+          </button>
+        </div>
+      )}
 
       {selectedItem && (
         <div className="border border-[#2e303a] rounded p-3 bg-[#15161d]">

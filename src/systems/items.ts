@@ -1,5 +1,5 @@
 import type { Affix, AffixDefinition, Equipment, EquipmentBonus, Item, ItemKind, ItemRarity, ItemSlot } from '../types/item.ts'
-import type { Attributes, Character, ClassId } from '../types/game.ts'
+import type { Attributes, Character, ClassId, GameState } from '../types/game.ts'
 import { BASE_ITEMS } from '../data/items.ts'
 import { SKILLS } from '../data/skills.ts'
 import { SUPPORTS } from '../data/supports.ts'
@@ -7,6 +7,37 @@ import { GEMS } from '../data/balance.ts'
 import { ALL_AFFIXES } from '../data/affixes.ts'
 import { CLASSES } from '../data/classes.ts'
 import { CHARACTER, DAMAGE, RECOVERY, monsterScalingMultiplier } from '../data/balance.ts'
+
+// ── Rarity affix range invariants ──────────────────────────────────────────
+// These are the authoritative floor/ceiling for every rarity tier.
+// Any item whose affix count falls outside its rarity's range is out of spec.
+export const RARITY_RANGE: Record<ItemRarity, { min: number; max: number }> = {
+  normal: { min: 0, max: 0 },
+  magic: { min: 1, max: 2 },
+  rare: { min: 4, max: 6 },
+  unique: { min: 0, max: 0 },
+}
+
+export const MAX_PREFIXES = 3
+export const MAX_SUFFIXES = 3
+
+/** Returns the highest rarity whose [min, max] range contains `count`, or null if count falls in a gap. */
+export function rarityForAffixCount(count: number): ItemRarity | null {
+  // Order matters: check highest first so 4-6 maps to rare, not magic.
+  const tiers: ItemRarity[] = ['rare', 'magic', 'normal']
+  for (const rarity of tiers) {
+    const range = RARITY_RANGE[rarity]
+    if (count >= range.min && count <= range.max) return rarity
+  }
+  return null
+}
+
+function countAffixTypes(affixes: Affix[]): { prefixes: number; suffixes: number } {
+  return {
+    prefixes: affixes.filter(a => a.type === 'prefix').length,
+    suffixes: affixes.filter(a => a.type === 'suffix').length,
+  }
+}
 
 let itemIdCounter = 0
 
@@ -178,21 +209,62 @@ export function rollAffixValue(def: AffixDefinition, itemLevel: number): Affix |
   }
 }
 
-export function rollAffixes(slot: ItemSlot, itemLevel: number, count: number): Affix[] {
+export function rollAffixes(
+  slot: ItemSlot,
+  itemLevel: number,
+  count: number,
+  existingAffixes: Affix[] = [],
+): Affix[] {
+  const existingIds = new Set(existingAffixes.map(a => {
+    // Strip the tier suffix to get the definition id for duplicate checks.
+    // Affix.id looks like "flat_physical_damage_t3" → definition id is "flat_physical_damage".
+    const tierIdx = a.id.lastIndexOf('_t')
+    return tierIdx >= 0 ? a.id.substring(0, tierIdx) : a.id
+  }))
+  const { prefixes: existingPrefixes, suffixes: existingSuffixes } = countAffixTypes(existingAffixes)
+
   const pool = [...ALL_AFFIXES].filter(a => a.allowedSlots.includes(slot))
   if (pool.length === 0) return []
 
-  const prefixes = pool.filter(a => a.type === 'prefix')
-  const suffixes = pool.filter(a => a.type === 'suffix')
+  let prefixPool = pool.filter(a => a.type === 'prefix' && !existingIds.has(a.id))
+  let suffixPool = pool.filter(a => a.type === 'suffix' && !existingIds.has(a.id))
+
+  let prefixCount = existingPrefixes
+  let suffixCount = existingSuffixes
   const affixes: Affix[] = []
 
   for (let i = 0; i < count; i++) {
-    const isPrefix = i % 2 === 0
-    const source = isPrefix ? prefixes : suffixes
-    if (source.length === 0) continue
+    // Decide which type to roll: prefer the under-represented side,
+    // fall back to whichever has room, bail if both are capped.
+    const canAddPrefix = prefixCount < MAX_PREFIXES && prefixPool.length > 0
+    const canAddSuffix = suffixCount < MAX_SUFFIXES && suffixPool.length > 0
+
+    let targetType: 'prefix' | 'suffix'
+    if (canAddPrefix && canAddSuffix) {
+      // Both have room — pick the side with fewer allocated.
+      targetType = prefixCount <= suffixCount ? 'prefix' : 'suffix'
+    } else if (canAddPrefix) {
+      targetType = 'prefix'
+    } else if (canAddSuffix) {
+      targetType = 'suffix'
+    } else {
+      break // both capped or empty
+    }
+
+    const source = targetType === 'prefix' ? prefixPool : suffixPool
     const def = source[Math.floor(Math.random() * source.length)]
     const affix = rollAffixValue(def, itemLevel)
-    if (affix) affixes.push(affix)
+    if (affix) {
+      affixes.push(affix)
+      existingIds.add(def.id)
+      if (targetType === 'prefix') {
+        prefixCount++
+        prefixPool = prefixPool.filter(a => a.id !== def.id)
+      } else {
+        suffixCount++
+        suffixPool = suffixPool.filter(a => a.id !== def.id)
+      }
+    }
   }
 
   return affixes
@@ -613,10 +685,16 @@ export function applyOrb(item: Item, currencyId: string): Item {
       if (item.rarity !== 'magic') return item
       result = { ...item, affixes: rollAffixes(item.slot, item.itemLevel, Math.random() < 0.5 ? 1 : 2) }
       break
-    case 'sovereignty':
+    case 'sovereignty': {
       if (item.rarity !== 'magic') return item
-      result = { ...item, rarity: 'rare', affixes: [...item.affixes, ...rollAffixes(item.slot, item.itemLevel, 1)] }
+      // Check we can add at least one affix without violating 3/3 caps.
+      const { prefixes, suffixes } = countAffixTypes(item.affixes)
+      if (prefixes >= MAX_PREFIXES && suffixes >= MAX_SUFFIXES) return item
+      const added = rollAffixes(item.slot, item.itemLevel, 1, item.affixes)
+      if (added.length === 0) return item
+      result = { ...item, rarity: 'rare', affixes: [...item.affixes, ...added] }
       break
+    }
     case 'genesis':
       if (item.rarity !== 'normal') return item
       result = { ...item, rarity: 'rare', affixes: rollAffixes(item.slot, item.itemLevel, 4) }
@@ -625,14 +703,42 @@ export function applyOrb(item: Item, currencyId: string): Item {
       if (item.rarity !== 'rare') return item
       result = { ...item, affixes: rollAffixes(item.slot, item.itemLevel, 4) }
       break
-    case 'triumph':
-      if (item.rarity !== 'rare' || item.affixes.length >= 6) return item
-      result = { ...item, affixes: [...item.affixes, ...rollAffixes(item.slot, item.itemLevel, 1)] }
+    case 'triumph': {
+      if (item.rarity !== 'rare') return item
+      const { prefixes, suffixes } = countAffixTypes(item.affixes)
+      if (prefixes >= MAX_PREFIXES && suffixes >= MAX_SUFFIXES) return item
+      if (item.affixes.length >= 6) return item
+      const added = rollAffixes(item.slot, item.itemLevel, 1, item.affixes)
+      if (added.length === 0) return item
+      result = { ...item, affixes: [...item.affixes, ...added] }
       break
-    case 'void_orb':
+    }
+    case 'void_orb': {
+      // Void only functions on Magic or Rare items.
+      if (item.rarity !== 'magic' && item.rarity !== 'rare') return item
       if (item.affixes.length === 0) return item
-      result = { ...item, affixes: item.affixes.filter((_, i) => i !== Math.floor(Math.random() * item.affixes.length)) }
+
+      // Remove one random affix.
+      const removeIndex = Math.floor(Math.random() * item.affixes.length)
+      let newAffixes = item.affixes.filter((_, i) => i !== removeIndex)
+
+      // Determine what rarity this count maps to.
+      let newRarity = rarityForAffixCount(newAffixes.length)
+
+      // If the count falls in a gap (e.g. 3 is between Magic max=2 and Rare min=4),
+      // strip excess affixes randomly until we land in a valid range.
+      while (newRarity === null && newAffixes.length > 0) {
+        const excessIndex = Math.floor(Math.random() * newAffixes.length)
+        newAffixes = newAffixes.filter((_, i) => i !== excessIndex)
+        newRarity = rarityForAffixCount(newAffixes.length)
+      }
+
+      // Fallback: if we somehow emptied everything, go to Normal.
+      if (newRarity === null) newRarity = 'normal'
+
+      result = { ...item, rarity: newRarity, affixes: newAffixes }
       break
+    }
     case 'cleansing':
       result = { ...item, rarity: 'normal', affixes: [] }
       break
@@ -706,4 +812,71 @@ export function dropItem(zoneLevel: number, modifiers: DropModifiers = {}): Item
   const baseId = baseIds[Math.floor(Math.random() * baseIds.length)]
   const rarity = determineDropRarity(zoneLevel, modifiers)
   return createItem(baseId, zoneLevel, rarity)
+}
+
+// ── Item diagnostics ────────────────────────────────────────────────────────
+
+export interface ItemViolation {
+  itemId: string
+  itemName: string
+  rarity: ItemRarity
+  violations: string[]
+}
+
+/** Scans all items in inventory + equipment and reports any that violate the
+ *  rarity-range, prefix/suffix cap, or duplicate-affix invariants. */
+export function diagnoseItems(state: GameState): ItemViolation[] {
+  const violations: ItemViolation[] = []
+  const allItems: Item[] = [
+    ...state.inventory.items,
+    ...Object.values(state.equipment).filter(Boolean) as Item[],
+  ]
+
+  for (const item of allItems) {
+    if (!item || item.kind !== undefined && item.kind !== 'equipment') continue
+    const itemViolations: string[] = []
+
+    // Rarity range check
+    const range = RARITY_RANGE[item.rarity]
+    if (range) {
+      if (item.affixes.length < range.min) {
+        itemViolations.push(`${item.rarity} item has ${item.affixes.length} affixes (min ${range.min})`)
+      }
+      if (item.affixes.length > range.max) {
+        itemViolations.push(`${item.rarity} item has ${item.affixes.length} affixes (max ${range.max})`)
+      }
+    }
+
+    // Duplicate affix definition id check
+    const seenDefIds = new Set<string>()
+    for (const affix of item.affixes) {
+      // Strip tier suffix to get definition id
+      const tierIdx = affix.id.lastIndexOf('_t')
+      const defId = tierIdx >= 0 ? affix.id.substring(0, tierIdx) : affix.id
+      if (seenDefIds.has(defId)) {
+        itemViolations.push(`duplicate affix: ${affix.name} (def ${defId})`)
+      }
+      seenDefIds.add(defId)
+    }
+
+    // Prefix / suffix cap check
+    const { prefixes, suffixes } = countAffixTypes(item.affixes)
+    if (prefixes > MAX_PREFIXES) {
+      itemViolations.push(`${prefixes} prefixes (max ${MAX_PREFIXES})`)
+    }
+    if (suffixes > MAX_SUFFIXES) {
+      itemViolations.push(`${suffixes} suffixes (max ${MAX_SUFFIXES})`)
+    }
+
+    if (itemViolations.length > 0) {
+      violations.push({
+        itemId: item.id,
+        itemName: item.name,
+        rarity: item.rarity,
+        violations: itemViolations,
+      })
+    }
+  }
+
+  return violations
 }

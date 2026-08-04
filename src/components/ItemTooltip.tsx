@@ -1,5 +1,6 @@
 import { rarityTextClass, rarityBorderClass } from '../types/item.ts'
 import type { Item } from '../types/item.ts'
+import { RARITY_RANGE } from '../systems/items.ts'
 
 interface ItemTooltipProps {
   item: Item
@@ -16,6 +17,13 @@ export function ItemTooltip({ item, compact }: ItemTooltipProps) {
       <div className="text-xs text-gray-500 mb-2">
         {item.rarity} {item.slot} <span className="text-gray-600">• iLvl {item.itemLevel}</span>
       </div>
+
+      {item.rarity !== 'normal' && item.rarity !== 'unique' &&
+        item.affixes.length === RARITY_RANGE[item.rarity].min && (
+          <div className="mb-2 rounded border border-amber-700/60 bg-amber-950/30 px-2 py-1.5 text-xs text-amber-200">
+            ⚠ Removing an affix will demote this item.
+          </div>
+        )}
 
       {/* Base stats */}
       <div className="space-y-0.5 mb-2">

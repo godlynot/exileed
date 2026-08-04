@@ -449,6 +449,21 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
   },
 
   useCurrency: (itemId: string, currencyId: string) => {
+    // Penance is not an item currency — it grants a passive refund point.
+    if (currencyId === 'penance') {
+      set(state => {
+        if ((state.currencies['penance'] || 0) <= 0) return state
+        const currencies = { ...state.currencies }
+        currencies['penance'] = (currencies['penance'] || 0) - 1
+        const character = {
+          ...state.character,
+          passivePoints: (state.character.passivePoints || 0) + 1,
+        }
+        return { ...state, currencies, character }
+      })
+      return
+    }
+
     set(state => {
       if ((state.currencies[currencyId] || 0) <= 0) return state
       const itemIndex = state.inventory.items.findIndex(i => i.id === itemId)

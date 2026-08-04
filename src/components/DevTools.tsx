@@ -1,5 +1,6 @@
 import { useGameStore } from '../store/gameStore.ts'
 import { useState } from 'react'
+import { diagnoseItems, type ItemViolation } from '../systems/items.ts'
 
 export function DevTools() {
   const character = useGameStore(state => state.character)
@@ -7,6 +8,7 @@ export function DevTools() {
   const devSetStats = useGameStore(state => state.devSetStats)
   const devSpawnTestPack = useGameStore(state => state.devSpawnTestPack)
   const [customLevel, setCustomLevel] = useState(character.level)
+  const [itemDiagnostic, setItemDiagnostic] = useState<{ violations: ItemViolation[]; total: number; equipped: number } | null>(null)
 
   const [stats, setStats] = useState({
     strength: character.attributes.strength,
@@ -103,6 +105,57 @@ export function DevTools() {
 
       <div className="text-xs text-gray-400 pt-2 border-t border-[#2e303a]">
         Current level: <span className="text-[#d4a017]">{character.level}</span>
+      </div>
+
+      {/* Item Diagnostic */}
+      <div className="pt-4 border-t border-[#2e303a]">
+        <h4 className="text-sm font-medium text-[#d4a017] mb-2">Item Diagnostic</h4>
+        <p className="text-xs text-gray-400 mb-2">
+          Scans inventory + equipment for rarity-range, duplicate-affix, and prefix/suffix cap violations.
+        </p>
+        <button
+          onClick={() => {
+            const state = useGameStore.getState()
+            const gameState = {
+              inventory: state.inventory,
+              equipment: state.equipment,
+            } as any
+            const violations = diagnoseItems(gameState)
+            const equippedCount = Object.values(state.equipment).filter(Boolean).length
+            setItemDiagnostic({
+              violations,
+              total: state.inventory.items.length + equippedCount,
+              equipped: equippedCount,
+            })
+          }}
+          className="w-full px-3 py-2 bg-[#2e303a] hover:bg-[#3e404a] rounded text-xs text-gray-200"
+        >
+          Run Item Diagnostic
+        </button>
+        {itemDiagnostic && (
+          <div className="mt-2 p-3 bg-[#0b0c10] border border-[#2e303a] rounded text-xs">
+            <div className="mb-1">
+              Scanned: {itemDiagnostic.total} items (inventory + {itemDiagnostic.equipped} equipped)
+            </div>
+            {itemDiagnostic.violations.length === 0 ? (
+              <div className="text-green-400">✅ All items pass the new rules. No migration concerns.</div>
+            ) : (
+              <>
+                <div className="text-red-400 mb-2">
+                  ❌ {itemDiagnostic.violations.length} violation{itemDiagnostic.violations.length !== 1 ? 's' : ''} found:
+                </div>
+                {itemDiagnostic.violations.map((v, i) => (
+                  <div key={i} className="mb-2 pl-2 border-l-2 border-red-600">
+                    <div className="text-gray-200">[{v.rarity}] {v.itemName}</div>
+                    {v.violations.map((detail, j) => (
+                      <div key={j} className="text-red-400 pl-3">└ {detail}</div>
+                    ))}
+                  </div>
+                ))}
+              </>
+            )}
+          </div>
+        )}
       </div>
 
       <div className="pt-4 border-t border-[#2e303a]">
