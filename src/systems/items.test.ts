@@ -122,6 +122,31 @@ describe('rarityForAffixCount', () => {
     expect(RARITY_RANGE.magic).toEqual({ min: 1, max: 2 })
     expect(RARITY_RANGE.rare).toEqual({ min: 4, max: 6 })
   })
+
+  it('item generation reaches the two-affix Magic and six-affix Rare ceilings', () => {
+    randomMock = spyOn(Math, 'random').mockReturnValue(0.999)
+
+    const magic = createItem('rusted_axe', 50, 'magic')
+    const rare = createItem('rusted_axe', 50, 'rare')
+
+    expect(magic.affixes).toHaveLength(2)
+    expect(rare.affixes).toHaveLength(6)
+    expect(rare.affixes.filter(a => a.type === 'prefix').length).toBeLessThanOrEqual(MAX_PREFIXES)
+    expect(rare.affixes.filter(a => a.type === 'suffix').length).toBeLessThanOrEqual(MAX_SUFFIXES)
+  })
+
+  it('Genesis and Entropy use the full Rare 4-6 range', () => {
+    randomMock = spyOn(Math, 'random').mockReturnValue(0.999)
+
+    const normal = createItem('rusted_axe', 50, 'normal')
+    const genesis = applyOrb(normal, 'genesis')
+    const entropy = applyOrb(genesis, 'entropy')
+
+    expect(genesis.rarity).toBe('rare')
+    expect(genesis.affixes).toHaveLength(6)
+    expect(entropy.rarity).toBe('rare')
+    expect(entropy.affixes).toHaveLength(6)
+  })
 })
 
 // ── Duplicate & cap enforcement in rollAffixes ───────────────────────────────
@@ -254,13 +279,15 @@ describe('Orb of the Void', () => {
 // ── Sovereignty & Triumph insertion path ─────────────────────────────────────
 
 describe('Sovereignty and Triumph respect existing prefix/suffix counts', () => {
-  it('Sovereignty adds an affix to a Magic item, producing Rare', () => {
-    const magic = createItem('rusted_axe', 10, 'magic')
+  it('Sovereignty fills a Magic item into the Rare 4-6 range', () => {
     randomMock = spyOn(Math, 'random').mockReturnValue(0.5)
+    const magic = createItem('rusted_axe', 10, 'magic')
 
     const result = applyOrb(magic, 'sovereignty')
     expect(result.rarity).toBe('rare')
-    expect(result.affixes.length).toBe(magic.affixes.length + 1)
+    expect(result.affixes.length).toBeGreaterThanOrEqual(RARITY_RANGE.rare.min)
+    expect(result.affixes.length).toBeLessThanOrEqual(RARITY_RANGE.rare.max)
+    expect(result.affixes.length).toBeGreaterThan(magic.affixes.length)
   })
 
   it('Sovereignty rejects when both prefix and suffix caps are already full', () => {

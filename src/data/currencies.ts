@@ -16,19 +16,19 @@ export const CURRENCIES: Record<string, Currency> = {
   sovereignty: {
     id: 'sovereignty',
     name: 'Orb of Sovereignty',
-    description: 'Upgrades a Magic item to a Rare item, adding one affix.',
+    description: 'Fills a Magic item into a Rare item with 4-6 total affixes.',
     color: '#f1c40f',
   },
   genesis: {
     id: 'genesis',
     name: 'Orb of Genesis',
-    description: 'Transforms a Normal item into a Rare item with 4 random affixes.',
+    description: 'Transforms a Normal item into a Rare item with 4-6 random affixes.',
     color: '#e67e22',
   },
   entropy: {
     id: 'entropy',
     name: 'Orb of Entropy',
-    description: 'Rerolls all affixes on a Rare item.',
+    description: 'Rerolls all affixes on a Rare item, generating 4-6 random affixes.',
     color: '#e74c3c',
   },
   triumph: {

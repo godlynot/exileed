@@ -39,6 +39,11 @@ function countAffixTypes(affixes: Affix[]): { prefixes: number; suffixes: number
   }
 }
 
+function randomAffixCount(rarity: 'magic' | 'rare'): number {
+  const range = RARITY_RANGE[rarity]
+  return range.min + Math.floor(Math.random() * (range.max - range.min + 1))
+}
+
 let itemIdCounter = 0
 
 export function generateItemId(): string {
@@ -375,11 +380,8 @@ export function createItem(baseId: string, itemLevel: number, rarity: ItemRarity
   const base = BASE_ITEMS[baseId]
   if (!base) throw new Error(`Unknown base item ${baseId}`)
 
-  let affixCount = 0
-  if (rarity === 'magic') affixCount = Math.random() < 0.5 ? 1 : 2
-  if (rarity === 'rare') affixCount = 4
-
-  const affixes = rarity === 'normal' ? [] : rollAffixes(base.slot, itemLevel, affixCount)
+  const affixCount = rarity === 'magic' || rarity === 'rare' ? randomAffixCount(rarity) : 0
+  const affixes = affixCount === 0 ? [] : rollAffixes(base.slot, itemLevel, affixCount)
 
   const item: Item = {
     id: generateItemId(),
@@ -679,7 +681,7 @@ export function applyOrb(item: Item, currencyId: string): Item {
   switch (currencyId) {
     case 'awakening':
       if (item.rarity !== 'normal') return item
-      result = { ...item, rarity: 'magic', affixes: rollAffixes(item.slot, item.itemLevel, Math.random() < 0.5 ? 1 : 2) }
+      result = { ...item, rarity: 'magic', affixes: rollAffixes(item.slot, item.itemLevel, randomAffixCount('magic')) }
       break
     case 'mutation':
       if (item.rarity !== 'magic') return item
@@ -687,21 +689,21 @@ export function applyOrb(item: Item, currencyId: string): Item {
       break
     case 'sovereignty': {
       if (item.rarity !== 'magic') return item
-      // Check we can add at least one affix without violating 3/3 caps.
-      const { prefixes, suffixes } = countAffixTypes(item.affixes)
-      if (prefixes >= MAX_PREFIXES && suffixes >= MAX_SUFFIXES) return item
-      const added = rollAffixes(item.slot, item.itemLevel, 1, item.affixes)
-      if (added.length === 0) return item
+      const targetCount = randomAffixCount('rare')
+      const additionalCount = targetCount - item.affixes.length
+      if (additionalCount <= 0) return item
+      const added = rollAffixes(item.slot, item.itemLevel, additionalCount, item.affixes)
+      if (added.length !== additionalCount) return item
       result = { ...item, rarity: 'rare', affixes: [...item.affixes, ...added] }
       break
     }
     case 'genesis':
       if (item.rarity !== 'normal') return item
-      result = { ...item, rarity: 'rare', affixes: rollAffixes(item.slot, item.itemLevel, 4) }
+      result = { ...item, rarity: 'rare', affixes: rollAffixes(item.slot, item.itemLevel, randomAffixCount('rare')) }
       break
     case 'entropy':
       if (item.rarity !== 'rare') return item
-      result = { ...item, affixes: rollAffixes(item.slot, item.itemLevel, 4) }
+      result = { ...item, affixes: rollAffixes(item.slot, item.itemLevel, randomAffixCount('rare')) }
       break
     case 'triumph': {
       if (item.rarity !== 'rare') return item

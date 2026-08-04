@@ -79,7 +79,9 @@ The user explicitly rejected cutting load-bearing systems. The following reduce 
 - [x] 9 equipment slots
 - [x] Item rarities (normal/magic/rare) with rarity colors
 - [x] Base items and affix pools with tiers
+- [x] Affix count bands: Magic 1–2, Rare 4–6; 3-prefix/3-suffix caps and duplicate prevention
 - [x] 9 crafting orbs/currencies
+
 - [x] Inventory with equip/unequip/sell/auto-sell
 - [x] Equipment panel with stat summary
 - [x] Item tooltips
@@ -168,10 +170,10 @@ Avoid all Path of Exile trademarked terms.
 |---|---|
 | Normal → Magic | **Orb of Awakening** |
 | Reroll Magic | **Orb of Mutation** |
-| Magic → Rare | **Orb of Sovereignty** |
-| Normal → Rare | **Orb of Genesis** |
-| Reroll Rare | **Orb of Entropy** |
-| Add affix to Rare | **Orb of Triumph** |
+| Magic → Rare (fills to 4–6 affixes) | **Orb of Sovereignty** |
+| Normal → Rare (4–6 affixes) | **Orb of Genesis** |
+| Reroll Rare (4–6 affixes) | **Orb of Entropy** |
+| Add affix to Rare (up to 6) | **Orb of Triumph** |
 | Remove one affix | **Orb of the Void** |
 | Remove all affixes | **Orb of Cleansing** |
 | Refund passive point | **Orb of Penance** |
@@ -195,7 +197,18 @@ Avoid all Path of Exile trademarked terms.
 
 ---
 
-## 6. Simplifications Retained / Rejected
+## 6. Itemization Rules
+
+- **Normal:** 0 affixes.
+- **Magic:** 1–2 affixes.
+- **Rare:** 4–6 affixes.
+- Every item may have at most **3 prefixes and 3 suffixes**, and an affix definition cannot appear more than once on the same item.
+- Orb of the Void removes one affix normally; if that would leave the count in the 3-affix gap, it removes additional random affixes until the item lands in a valid lower rarity band.
+- Existing saves are diagnosed in Dev Tools but are not silently rewritten; the current migration policy is to preserve affected items until a deliberate cleanup is chosen.
+
+---
+
+## 7. Simplifications Retained / Rejected
 
 | Proposal | Status |
 |---|---|
@@ -207,7 +220,7 @@ Avoid all Path of Exile trademarked terms.
 
 ---
 
-## 7. Engineering Requirements
+## 8. Engineering Requirements
 
 - All content lives in `src/data/` as TypeScript data files.
 - Combat is a deterministic pure function: `simulateTick(state) => { state, events }`.
@@ -220,7 +233,7 @@ Avoid all Path of Exile trademarked terms.
 
 ---
 
-## 8. Open Questions Remaining
+## 9. Open Questions Remaining
 
 1. Should we move to the Nexus endgame next, or polish existing systems?
 2. Should we wire the offline progress overlay now, or after the endgame is sketched?
@@ -228,7 +241,7 @@ Avoid all Path of Exile trademarked terms.
 
 ---
 
-## 9. Deferred / Accepted Issues
+## 10. Deferred / Accepted Issues
 
 ### Armour mitigation drift (accepted for now)
 
@@ -247,4 +260,4 @@ Avoid all Path of Exile trademarked terms.
 
 ---
 
-*Last updated: 2026-07-30 (Acts 6–8 campaign content added and balanced)*
+*Last updated: 2026-08-04 (Magic/Rare affix count bands and crafting invariants documented)*

@@ -175,14 +175,16 @@ Ascendancy mechanics wired in `combat.ts` / `passives.ts`:
 - Rarities: `normal`, `magic`, `rare`, `unique`
 - Slots: weapon, offhand, helmet, body, gloves, boots, belt, amulet, ring (x2)
 - Affixes have tiers and level requirements
+- Affix count bands: Magic = 1–2; Rare = 4–6; Normal = 0
+- Affix generation prevents duplicate definitions and enforces a maximum of 3 prefixes and 3 suffixes
 - Currencies/orbs:
-  - `awakening` — normal → magic
-  - `mutation` — reroll magic
-  - `sovereignty` — magic → rare
-  - `genesis` — normal → rare
-  - `entropy` — reroll rare
-  - `triumph` — add affix to rare (if < 6)
-  - `void_orb` — remove one affix
+  - `awakening` — normal → magic with 1–2 affixes
+  - `mutation` — reroll magic with 1–2 affixes
+  - `sovereignty` — fill magic → rare with 4–6 affixes
+  - `genesis` — normal → rare with 4–6 affixes
+  - `entropy` — reroll rare with 4–6 affixes
+  - `triumph` — add one affix to rare, up to 6 and within 3/3 caps
+  - `void_orb` — remove one affix; skip the 3-affix rarity gap when needed
   - `cleansing` — strip all affixes
 
 ### 4.8 Zones & Monsters
@@ -269,4 +271,4 @@ bun run validate:ascendancies
 ---
 
 *Generated: 2026-07-22*
-*Last updated: 2026-07-23 (M4.5 gem XP/leveling wired, CombatEffects hover tooltips, delayed damage log entries)*
+*Last updated: 2026-08-04 (Magic/Rare affix count bands and crafting invariants documented)*

@@ -31,6 +31,17 @@ maxEnergyShield = (baseES + levelBonus + intelligence * 2 + flatES) * (1 + incre
 levelBonus = (level - 1) * 6  // for both Life and ES
 ```
 
+## Itemization
+
+- **Normal items:** 0 affixes.
+- **Magic items:** 1–2 affixes.
+- **Rare items:** 4–6 affixes.
+- Affix generation enforces a maximum of **3 prefixes and 3 suffixes** per item and prevents duplicate affix definitions.
+- `Orb of Awakening` and `Orb of Mutation` use the Magic 1–2 range.
+- `Orb of Genesis` and `Orb of Entropy` use the Rare 4–6 range.
+- `Orb of Sovereignty` fills a Magic item into a valid Rare 4–6 result; `Orb of Triumph` adds one affix while respecting the six-affix and 3/3 prefix/suffix caps.
+- `Orb of the Void` can demote a minimum-count item and removes extra affixes only when necessary to skip the intentional 3-affix gap.
+
 ## Damage
 
 ### Ordering
