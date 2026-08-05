@@ -28,7 +28,7 @@ export const PREFIXES: AffixDefinition[] = [
     { level: 75, min: 70, max: 90 },
   ]),
   // Life prefixes
-  makeAffix('flat_life', 'prefix', 'flatLife', 'Vital', ['helmet', 'body', 'gloves', 'boots', 'belt', 'amulet', 'ring'], [
+  makeAffix('flat_life', 'prefix', 'flatLife', 'Vital', ['helmet', 'body', 'gloves', 'boots', 'belt', 'amulet', 'ring', 'offhand'], [
     { level: 1, min: 5, max: 10 },
     { level: 10, min: 10, max: 20 },
     { level: 25, min: 20, max: 35 },
@@ -36,7 +36,7 @@ export const PREFIXES: AffixDefinition[] = [
     { level: 70, min: 55, max: 80 },
   ]),
   // ES prefixes
-  makeAffix('flat_energy_shield', 'prefix', 'flatEnergyShield', 'Arcane', ['helmet', 'body', 'gloves', 'boots', 'amulet', 'ring'], [
+  makeAffix('flat_energy_shield', 'prefix', 'flatEnergyShield', 'Arcane', ['helmet', 'body', 'gloves', 'boots', 'amulet', 'ring', 'offhand'], [
     { level: 1, min: 3, max: 8 },
     { level: 12, min: 8, max: 16 },
     { level: 28, min: 16, max: 28 },
@@ -47,7 +47,7 @@ export const PREFIXES: AffixDefinition[] = [
   // scaling so that armour / (armour + 5 * hit) stays roughly constant and
   // evasion / (evasion + accuracy) remains a viable alternative layer across the
   // campaign. Tier magnitudes follow the front-loaded act curve: ~×3.2 per act.
-  makeAffix('armour_rating', 'prefix', 'armour', 'Reinforced', ['helmet', 'body', 'gloves', 'boots', 'belt'], [
+  makeAffix('armour_rating', 'prefix', 'armour', 'Reinforced', ['helmet', 'body', 'gloves', 'boots', 'belt', 'offhand'], [
     { level: 1, min: 5, max: 12 },
     { level: 10, min: 18, max: 45 },
     { level: 25, min: 110, max: 260 },
@@ -119,7 +119,7 @@ export const PREFIXES: AffixDefinition[] = [
     { level: 50, min: 18, max: 25 },
     { level: 74, min: 25, max: 35 },
   ]),
-  makeAffix('increased_armour', 'prefix', 'increasedArmourPercent', 'Hardened', ['helmet', 'body', 'gloves', 'boots', 'belt'], [
+  makeAffix('increased_armour', 'prefix', 'increasedArmourPercent', 'Hardened', ['helmet', 'body', 'gloves', 'boots', 'belt', 'offhand'], [
     { level: 1, min: 5, max: 12 },
     { level: 15, min: 12, max: 22 },
     { level: 32, min: 22, max: 36 },
@@ -166,21 +166,21 @@ export const SUFFIXES: AffixDefinition[] = [
     { level: 75, min: 70, max: 90 },
   ]),
   // Resistance suffixes
-  makeAffix('fire_resistance', 'suffix', 'fireResistance', 'of the Forge', ['helmet', 'body', 'gloves', 'boots', 'belt', 'amulet', 'ring'], [
+  makeAffix('fire_resistance', 'suffix', 'fireResistance', 'of the Forge', ['helmet', 'body', 'gloves', 'boots', 'belt', 'amulet', 'ring', 'offhand'], [
     { level: 1, min: 5, max: 10 },
     { level: 12, min: 10, max: 20 },
     { level: 28, min: 20, max: 30 },
     { level: 48, min: 30, max: 42 },
     { level: 72, min: 42, max: 56 },
   ]),
-  makeAffix('cold_resistance', 'suffix', 'coldResistance', 'of the North', ['helmet', 'body', 'gloves', 'boots', 'belt', 'amulet', 'ring'], [
+  makeAffix('cold_resistance', 'suffix', 'coldResistance', 'of the North', ['helmet', 'body', 'gloves', 'boots', 'belt', 'amulet', 'ring', 'offhand'], [
     { level: 1, min: 5, max: 10 },
     { level: 12, min: 10, max: 20 },
     { level: 28, min: 20, max: 30 },
     { level: 48, min: 30, max: 42 },
     { level: 72, min: 42, max: 56 },
   ]),
-  makeAffix('lightning_resistance', 'suffix', 'lightningResistance', 'of the Storm', ['helmet', 'body', 'gloves', 'boots', 'belt', 'amulet', 'ring'], [
+  makeAffix('lightning_resistance', 'suffix', 'lightningResistance', 'of the Storm', ['helmet', 'body', 'gloves', 'boots', 'belt', 'amulet', 'ring', 'offhand'], [
     { level: 1, min: 5, max: 10 },
     { level: 12, min: 10, max: 20 },
     { level: 28, min: 20, max: 30 },
@@ -245,7 +245,7 @@ export const SUFFIXES: AffixDefinition[] = [
     { level: 45, min: 650, max: 1500 },
     { level: 70, min: 2000, max: 5000 },
   ]),
-  makeAffix('increased_armour_suf', 'suffix', 'increasedArmourPercent', 'of the Mountain', ['helmet', 'body', 'gloves', 'boots', 'belt'], [
+  makeAffix('increased_armour_suf', 'suffix', 'increasedArmourPercent', 'of the Mountain', ['helmet', 'body', 'gloves', 'boots', 'belt', 'offhand'], [
     { level: 1, min: 5, max: 12 },
     { level: 15, min: 12, max: 22 },
     { level: 32, min: 22, max: 36 },

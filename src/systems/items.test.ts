@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, spyOn } from 'bun:test'
 import { GEMS } from '../data/balance.ts'
+import { BASE_ITEMS } from '../data/items.ts'
 import { SKILLS } from '../data/skills.ts'
 import { SUPPORTS } from '../data/supports.ts'
 import {
@@ -133,6 +134,22 @@ describe('rarityForAffixCount', () => {
     expect(rare.affixes).toHaveLength(6)
     expect(rare.affixes.filter(a => a.type === 'prefix').length).toBeLessThanOrEqual(MAX_PREFIXES)
     expect(rare.affixes.filter(a => a.type === 'suffix').length).toBeLessThanOrEqual(MAX_SUFFIXES)
+  })
+
+  it('every equipment base can generate valid Magic and Rare affix counts', () => {
+    for (const baseId of Object.keys(BASE_ITEMS)) {
+      for (let trial = 0; trial < 25; trial++) {
+        const magic = createItem(baseId, 50, 'magic')
+        const rare = createItem(baseId, 50, 'rare')
+
+        expect(magic.affixes.length).toBeGreaterThanOrEqual(RARITY_RANGE.magic.min)
+        expect(magic.affixes.length).toBeLessThanOrEqual(RARITY_RANGE.magic.max)
+        expect(rare.affixes.length).toBeGreaterThanOrEqual(RARITY_RANGE.rare.min)
+        expect(rare.affixes.length).toBeLessThanOrEqual(RARITY_RANGE.rare.max)
+        expect(rare.affixes.filter(a => a.type === 'prefix').length).toBeLessThanOrEqual(MAX_PREFIXES)
+        expect(rare.affixes.filter(a => a.type === 'suffix').length).toBeLessThanOrEqual(MAX_SUFFIXES)
+      }
+    }
   })
 
   it('Genesis and Entropy use the full Rare 4-6 range', () => {

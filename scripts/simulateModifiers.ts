@@ -19,6 +19,7 @@ function simulate(level: number): Report {
     normal: {},
     magic: {},
     rare: {},
+    boss: {},
   }
   let totalLifeMult = 0
   let totalDamageMult = 0
