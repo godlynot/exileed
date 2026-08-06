@@ -243,20 +243,15 @@ Avoid all Path of Exile trademarked terms.
 
 ## 10. Deferred / Accepted Issues
 
-### Armour mitigation drift (accepted for now)
+### Armour mitigation drift (reviewed)
 
-**Current status:** Accepted as a known balance quirk; revisit after the full campaign is balanced. Updated after Acts 6–8 were built and validated.
+**Current status:** Tuned alongside the completed campaign review. Defensive base gear stats now use a `0.75` exponent on `monsterScalingMultiplier`, and the level 25+ flat armour/evasion affix tiers were reduced to keep defensive growth meaningful without approaching immunity.
 
-**What it is:** After wiring gear to scale per zone with the front-loaded act curve (`monsterScalingMultiplier`), the `validate:balance` script reports armour mitigation rising from ~28% at level 1 to ~52% at level 23 (Spire Crown).
+**Why it happened:** The full front-loaded campaign curve was applied to defensive base stats while high-tier flat defensive affixes also grew sharply. The combination made armour outpace late-campaign incoming damage in the validator's rare-gear model.
 
-**Why it happens:** Both player armour and monster damage now scale with the same act curve, but the ratio between gear armour values and monster base damage values is not constant across tiers. Armour affix tier magnitudes outpace monster base damage as levels rise, so mitigation creeps upward.
+**What remains:** The validator still intentionally selects the highest-average-damage nonboss threat in each zone. The Frostbound and Judgment pools contain deliberate physical outliers (`Shatter Beast` and `Executioner`), so those zones remain useful spike tests rather than evidence of a global scaling failure.
 
-**Why it was accepted:** Hits-to-die is in/near the target band (10.7–27.2), TTK drift is excellent (1.48×), and the game feels better with gear upgrades mattering. Fixing the drift now could over-nerf armour before later acts exist to test against.
-
-**Possible fixes when revisited:**
-1. Reduce the armour-scaling exponent in `recalculateCharacterFromEquipment` (e.g. `bonus.armour * levelMultiplier^0.75` instead of the full curve).
-2. Lower the high-tier `armour_rating` affix magnitudes in `src/data/affixes.ts`.
-3. Slightly raise the denominator in the mitigation formula (`ARMOUR_MITIGATION_DENOMINATOR`) to lower mitigation globally.
+**Future tuning options:** If live combat confirms those spikes are too punishing, tune the individual monster templates or add defensive counterplay; do not raise the global mitigation denominator without first checking armour-focused builds.
 
 ---
 

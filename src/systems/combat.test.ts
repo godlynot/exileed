@@ -122,6 +122,7 @@ function makeGameState(character: Character, combat: CombatState): GameState {
     inventory: { items: [], maxSize: 60, autoSellNormal: false, autoSellMagic: false } as any,
     equipment: {} as any,
     currencies: {},
+    nexus: { maps: [], activeMapId: null, packsCleared: 0 },
     combat,
     lastSaveTime: 0,
     saveVersion: 4,

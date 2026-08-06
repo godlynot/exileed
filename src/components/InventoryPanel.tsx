@@ -5,11 +5,14 @@ import { CURRENCIES } from '../data/currencies.ts'
 import { isBlankSupport, isGemItem, isNonEquipmentItem, rarityTextClass } from '../types/item.ts'
 import type { Item } from '../types/item.ts'
 import { SUPPORTS } from '../data/supports.ts'
+import { mapAffixDescription } from '../data/mapAffixes.ts'
 
 export function InventoryPanel() {
   const inventory = useGameStore(state => state.inventory)
   const currencies = useGameStore(state => state.currencies)
+  const nexus = useGameStore(state => state.nexus)
   const equipItem = useGameStore(state => state.equipItem)
+  const openNexusMap = useGameStore(state => state.openNexusMap)
   const sellItem = useGameStore(state => state.sellItem)
   const discardItem = useGameStore(state => state.discardItem)
   const useCurrency = useGameStore(state => state.useCurrency)
@@ -154,7 +157,36 @@ export function InventoryPanel() {
         </div>
       )}
 
-      {inventory.items.length === 0 && (
+      {/* Nexus Maps */}
+      {nexus.maps.length > 0 && (
+        <div className="border-t border-[#2e303a] pt-4 mt-4">
+          <h3 className="text-sm font-medium text-[#7e14ff] mb-2">Nexus Maps</h3>
+          <div className="grid grid-cols-4 gap-2">
+            {nexus.maps.map(map => (
+              <button
+                key={map.id}
+                onClick={() => openNexusMap(map.id)}
+                disabled={!!nexus.activeMapId}
+                className="p-2 text-xs text-left border border-[#7e14ff]/30 bg-[#1a1525] rounded hover:bg-[#2a2040] disabled:opacity-50 transition-colors"
+              >
+                <div className="text-[#b57eff] font-medium truncate">Tier {map.tier}</div>
+                <div className="text-[10px] text-gray-400">Lvl {map.monsterLevel}</div>
+                <div className="text-[10px] text-gray-400">{map.currentCharges}/{map.maxCharges} charges</div>
+                <div className="mt-1 space-y-0.5">
+                  {map.affixes.map(affix => (
+                    <div key={`${map.id}-${affix.id}`} className="text-[10px] text-purple-200 truncate" title={mapAffixDescription(affix)}>
+                      {mapAffixDescription(affix)}
+                    </div>
+                  ))}
+                </div>
+                <div className="text-[10px] text-[#7e14ff]/70 mt-0.5">Enter Map →</div>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {inventory.items.length === 0 && nexus.maps.length === 0 && (
         <div className="text-sm text-gray-500 italic">No items yet — monsters drop loot on death.</div>
       )}
     </div>

@@ -4,11 +4,15 @@ import { CURRENCIES } from '../data/currencies.ts'
 import { ItemTooltip } from './ItemTooltip.tsx'
 import { rarityTextClass } from '../types/item.ts'
 import type { Item } from '../types/item.ts'
+import { NEXUS_MAX_TIER, nexusMapCrystalCost } from '../systems/nexus.ts'
+import { mapAffixDescription } from '../data/mapAffixes.ts'
 
 export function CraftingPanel() {
   const inventory = useGameStore(state => state.inventory)
   const currencies = useGameStore(state => state.currencies)
+  const nexus = useGameStore(state => state.nexus)
   const useCurrency = useGameStore(state => state.useCurrency)
+  const craftNexusMap = useGameStore(state => state.craftNexusMap)
   const [selectedItem, setSelectedItem] = useState<Item | null>(null)
 
   return (
@@ -64,6 +68,42 @@ export function CraftingPanel() {
           </button>
         </div>
       )}
+
+      {/* Nexus Map Crafting */}
+      <div className="border-t border-[#2e303a] pt-4 mt-2">
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-sm font-medium text-[#7e14ff]">Nexus Mapcraft</h3>
+          <span className="text-xs text-[#b57eff]">{currencies['rift_crystal'] || 0} Rift Crystals</span>
+        </div>
+        <div className="grid grid-cols-4 gap-2">
+          {Array.from({ length: NEXUS_MAX_TIER }, (_, index) => index + 1).map(tier => {
+            const cost = nexusMapCrystalCost(tier)
+            const canAfford = (currencies['rift_crystal'] || 0) >= cost
+            return (
+              <button
+                key={tier}
+                onClick={() => craftNexusMap(tier)}
+                disabled={!canAfford}
+                className="p-2 text-xs text-center border border-[#7e14ff]/30 bg-[#1a1525] rounded hover:bg-[#2a2040] disabled:opacity-40 transition-colors"
+              >
+                <div className="text-[#b57eff] font-medium">Tier {tier}</div>
+                <div className="text-[10px] text-gray-500">{cost} Crystal{cost !== 1 && 's'}</div>
+              </button>
+            )
+          })}
+        </div>
+        {nexus.maps.length > 0 && (
+          <div className="mt-2 text-[10px] text-gray-500">
+            {nexus.maps.length} map{nexus.maps.length !== 1 && 's'} owned •{' '}
+            {nexus.activeMapId ? 'Map in progress' : 'Select a map from Inventory'}
+            <div className="mt-1 space-y-0.5">
+              {nexus.maps.slice(0, 1).flatMap(map => map.affixes.map(affix => (
+                <div key={`${map.id}-${affix.id}`} className="text-purple-200/80">{mapAffixDescription(affix)}</div>
+              )))}
+            </div>
+          </div>
+        )}
+      </div>
 
       {selectedItem && (
         <div className="border border-[#2e303a] rounded p-3 bg-[#15161d]">

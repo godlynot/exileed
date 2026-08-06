@@ -68,7 +68,7 @@ finalDamage = flatDamage * (1 + Σ increased%) * Π (1 + more) * critMultiplier
 mitigation = armour / (armour + 5 * incomingHitDamage)
 ```
 
-Armour is relatively better against small, frequent hits and worse against large, rare hits.
+Armour is relatively better against small, frequent hits and worse against large, rare hits. Defensive base stats use a `0.75` exponent on the campaign multiplier so armour and evasion remain meaningful without approaching immunity in late acts. High-tier flat defensive affixes are tuned to the same goal. The balance validator applies the repeatable-trash hits-to-die band only to non-boss zones; boss-only zones are endurance encounters and are reviewed through their boss TTK instead.
 
 ### Evasion
 
@@ -182,6 +182,12 @@ These bonuses stack with the existing zone-level drop tables in `src/systems/ite
 | 7 | The Rotting Deep | 50–58 | Ailments / DoT | Ailment mitigation, recovery |
 | 8 | Halls of Judgment | 58–65 | Everything + high crit | Balanced defense, crit mitigation |
 
+### Defensive Gear Scaling
+
+Armour and evasion base stats use the same campaign curve as monster stats with a defensive exponent of `0.75`. Weapons, life, and energy shield retain their existing scaling. This keeps defensive upgrades relevant while preventing the armour curve from outpacing incoming damage in later acts.
+
 ### Monster Scaling in `createMonster`
 
 When a monster template is spawned in a zone, its stats are scaled from the template's natural level to the zone's level using the per-level multipliers above. This lets the same Act 1 trash template reappear in later Act 1 zones while remaining threatening.
+
+The current validator result is intentionally advisory: campaign trash TTK drift is 1.86x, and the remaining non-boss survivability note is Bloodmire Hollow at roughly 51 average hits against the max-rare Warlord estimate. That is a short defensive comfort window rather than a global scaling failure; the late-game spike tests are the deliberate monster outliers in Frostbound Peaks and Halls of Judgment.

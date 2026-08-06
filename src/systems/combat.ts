@@ -31,6 +31,15 @@ import {
 import { createMomentumState, gainMomentum, tickMomentumDecay, effectiveCooldownTicks, momentumDamageMultiplier, isMaxMomentum, breakneckRaiseCap } from './momentum.ts'
 import { createAilmentFromSkill, createAilmentFromAura, tickAilments } from './ailments.ts'
 import { getGemLevel, gainGemXpForSkillUse, skillDamageMultiplier, supportModMultiplier } from './gems.ts'
+import { aggregateMapAffixEffects } from '../data/mapAffixes.ts'
+import {
+  NEXUS_RIFT_CRYSTAL_DROP_CHANCE,
+  isNexusZoneId,
+  nexusZoneForMap,
+  nexusZoneIdForMap,
+  recordNexusPackClear,
+  riftCrystalRewardForBoss,
+} from './nexus.ts'
 
 let eventIdCounter = 0
 
@@ -234,22 +243,23 @@ function createMonster(zone: Zone, canSpawnNamedElite: boolean): Monster {
   const scaledAccuracyAdd = scaleModifierValue(accuracyAdd, zone.level)
 
   const rewardMult = REWARD_MULTIPLIERS[rarity]
+  const mapEffects = aggregateMapAffixEffects(zone.mapAffixes)
 
   monster = {
     ...monster,
     rarity,
     isNamedElite: isNamedEliteSpawn,
     modifierIds: modifiers.map(m => m.id),
-    life: Math.floor(monster.life * lifeMult),
-    maxLife: Math.floor(monster.maxLife * lifeMult),
+    life: Math.floor(monster.life * lifeMult * mapEffects.monsterLifeMultiplier),
+    maxLife: Math.floor(monster.maxLife * lifeMult * mapEffects.monsterLifeMultiplier),
     damage: monster.damage.map(d => ({
       ...d,
-      min: Math.max(1, Math.floor(d.min * damageMult)),
-      max: Math.max(1, Math.floor(d.max * damageMult)),
+      min: Math.max(1, Math.floor(d.min * damageMult * mapEffects.monsterDamageMultiplier)),
+      max: Math.max(1, Math.floor(d.max * damageMult * mapEffects.monsterDamageMultiplier)),
     })),
-    attackRate: monster.attackRate * attackRateMult,
+    attackRate: monster.attackRate * attackRateMult * mapEffects.monsterAttackRateMultiplier,
     accuracy: monster.accuracy + scaledAccuracyAdd,
-    evasion: monster.evasion + scaledEvasionAdd,
+    evasion: Math.floor((monster.evasion + scaledEvasionAdd) * mapEffects.monsterEvasionMultiplier),
     armour: (monster.armour ?? 0) + scaledArmourAdd,
     experienceReward: Math.floor(monster.experienceReward * rewardMult),
     goldReward: Math.floor(monster.goldReward * rewardMult),
@@ -329,8 +339,8 @@ function advancePack(
 ): CombatState {
   const originalSize = combat.currentPack.length
 
-  // Remove the dead front member
-  const remaining = combat.currentPack.slice(1)
+  // Remove the dead front member and any pack members already killed by a band hit.
+  const remaining = combat.currentPack.slice(1).filter(member => member.currentLife > 0)
 
   // If the pack still has members, promote the next one
   if (remaining.length > 0) {
@@ -871,8 +881,20 @@ export function simulateTick(state: GameState): { state: GameState; events: Comb
   let inventory = { ...state.inventory, items: [...state.inventory.items] }
   let activeTrial = state.activeTrial
   let gamePhase = state.gamePhase
+  let activeZoneId = state.activeZoneId
+  let previousZoneId = state.previousZoneId
+  const sourceNexus = state.nexus ?? { maps: [], activeMapId: null, packsCleared: 0 }
+  let nexus = {
+    ...sourceNexus,
+    maps: (Array.isArray(sourceNexus.maps) ? sourceNexus.maps : []).map(map => ({ ...map })),
+  }
 
-  const zone = zones.find(z => z.id === state.activeZoneId)
+  const campaignZone = zones.find(z => z.id === state.activeZoneId)
+  const activeNexusMap = sourceNexus.activeMapId
+    ? (Array.isArray(sourceNexus.maps) ? sourceNexus.maps : []).find(map => map.id === sourceNexus.activeMapId) ?? null
+    : null
+  const zone = campaignZone ?? (activeNexusMap && isNexusZoneId(state.activeZoneId) ? nexusZoneForMap(activeNexusMap) : undefined)
+  const isNexusRun = !!activeNexusMap && !campaignZone && state.activeZoneId === nexusZoneIdForMap(activeNexusMap)
 
   // Herald storm periodic lightning tick
   // Herald auras are set-wide effects on the party set (currently just the player).
@@ -921,7 +943,7 @@ export function simulateTick(state: GameState): { state: GameState; events: Comb
       }
       events.push(makeEvent({ type: 'playerDied' }))
       return {
-        state: { ...state, character, combat, zones, inventory, activeTrial, gamePhase },
+        state: { ...state, character, combat, zones, inventory, activeZoneId, previousZoneId, activeTrial, gamePhase, nexus },
         events,
       }
     }
@@ -1010,7 +1032,7 @@ export function simulateTick(state: GameState): { state: GameState; events: Comb
       }
     }
     return {
-      state: { ...state, character, combat, zones, inventory, activeTrial, gamePhase },
+      state: { ...state, character, combat, zones, inventory, activeZoneId, previousZoneId, activeTrial, gamePhase, nexus },
       events,
     }
   }
@@ -1018,7 +1040,7 @@ export function simulateTick(state: GameState): { state: GameState; events: Comb
   // Ensure a pack exists and an front monster is active
   if (combat.currentPack.length === 0) {
     if (!zone) {
-      return { state: { ...state, character, combat, zones, inventory, activeTrial, gamePhase }, events }
+      return { state: { ...state, character, combat, zones, inventory, activeZoneId, previousZoneId, activeTrial, gamePhase, nexus }, events }
     }
     const spawnResult = spawnMonster(zone, combat)
     combat = {
@@ -1350,7 +1372,7 @@ export function simulateTick(state: GameState): { state: GameState; events: Comb
         }
         events.push(makeEvent({ type: 'playerDied' }))
         return {
-          state: { ...state, character, combat, zones, inventory, activeTrial, gamePhase },
+          state: { ...state, character, combat, currencies, zones, inventory, activeZoneId, previousZoneId, activeTrial, gamePhase, nexus },
           events,
         }
       }
@@ -1377,6 +1399,16 @@ export function simulateTick(state: GameState): { state: GameState; events: Comb
     events.push(makeEvent({ type: 'monsterDied', monsterId: monster.id, monsterType: monster.name }))
     if (monster.rarity === 'boss') {
       events.push(makeEvent({ type: 'bossDefeated', bossId: monster.id }))
+    }
+
+    // Act 8 final boss gateway + map sustain: award Rift Crystals on eligible kills.
+    const bossCrystalReward = riftCrystalRewardForBoss(campaignZone, monster)
+    const mapEffects = aggregateMapAffixEffects(zone?.mapAffixes)
+    const mapCrystalReward = isNexusRun && Math.random() < NEXUS_RIFT_CRYSTAL_DROP_CHANCE * (1 + mapEffects.riftCrystalChance) ? 1 : 0
+    const riftCrystalReward = bossCrystalReward + mapCrystalReward
+    if (riftCrystalReward > 0) {
+      currencies['rift_crystal'] = (currencies['rift_crystal'] || 0) + riftCrystalReward
+      events.push(makeEvent({ type: 'riftCrystalGained', amount: riftCrystalReward }))
     }
 
     // Momentum gain on kill (only for Warlords who have unlocked Momentum; Skirmishers build faster)
@@ -1469,8 +1501,11 @@ export function simulateTick(state: GameState): { state: GameState; events: Comb
         rare: (hasGold ? (unwavering ? 0.1 : 0.05) : 0) + (namedEliteBonuses?.rareChance ?? 0),
         magic: hasGold ? (unwavering ? 0.2 : 0.1) : 0,
       }
+      const mapEffects = aggregateMapAffixEffects(zone.mapAffixes)
       const extraDropChance =
-        (hasGold ? (unwavering ? 0.5 : 0.25) : 0) + (namedEliteBonuses?.extraDropChance ?? 0)
+        (hasGold ? (unwavering ? 0.5 : 0.25) : 0) +
+        (namedEliteBonuses?.extraDropChance ?? 0) +
+        mapEffects.extraDropChance
       const dropModifiers: DropModifiers = {
         rarityBonus,
         extraDropChance,
@@ -1512,7 +1547,7 @@ export function simulateTick(state: GameState): { state: GameState; events: Comb
       events.push(makeEvent({ type: 'zoneProgress', current: newProgress, total: 100 }))
 
       const currentIndex = zones.findIndex(w => w.id === zone.id)
-      if (zones[currentIndex].killProgress >= 100 && currentIndex < zones.length - 1) {
+      if (currentIndex >= 0 && zones[currentIndex].killProgress >= 100 && currentIndex < zones.length - 1) {
         zones = zones.map((w, idx) => (idx === currentIndex + 1 ? { ...w, unlocked: true } : w))
       }
 
@@ -1558,6 +1593,27 @@ export function simulateTick(state: GameState): { state: GameState; events: Comb
       } else {
         combat = { ...combat, packDamageCarryover: 0, virulent: { ...combat.virulent, patientZeroTarget: null } }
       }
+
+      // A Nexus map advances only when a whole pack is cleared.
+      if (isNexusRun && events.some(event => event.type === 'packCleared')) {
+        const clearResult = recordNexusPackClear(nexus)
+        nexus = clearResult.nexus
+        if (clearResult.mapCompleted) {
+          const returnZone = previousZoneId ? zones.find(candidate => candidate.id === previousZoneId) : undefined
+          activeZoneId = returnZone?.id ?? zones[0]?.id ?? activeZoneId
+          previousZoneId = null
+          combat = {
+            ...combat,
+            monster: null as any,
+            monsterLife: 0,
+            currentPack: [],
+            packSizeRemaining: 0,
+            packNamedEliteCount: 0,
+            packDamageCarryover: 0,
+          }
+          events.push(makeEvent({ type: 'nexusMapCompleted' }))
+        }
+      }
     }
   }
 
@@ -1573,6 +1629,9 @@ export function simulateTick(state: GameState): { state: GameState; events: Comb
     inventory,
     activeTrial,
     gamePhase,
+    activeZoneId,
+    previousZoneId,
+    nexus,
   }
 
   return { state: nextState, events }

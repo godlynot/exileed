@@ -14,6 +14,7 @@ import { createMomentumState } from '../systems/momentum.ts'
 import { saveGame, loadGame, exportSave as exportSaveString, importSave } from '../systems/save.ts'
 import { computeOfflineSeconds } from '../systems/offlineProgress.ts'
 import type { OfflineSummary } from '../types/game.ts'
+import { createNexusMap, nexusMapCrystalCost, nexusZoneForMap } from '../systems/nexus.ts'
 import { BASE_ITEMS, STARTER_ITEMS } from '../data/items.ts'
 import { SUPPORTS } from '../data/supports.ts'
 import { SKILLS } from '../data/skills.ts'
@@ -156,6 +157,15 @@ function createInitialCurrencies(): Record<string, number> {
     void_orb: 0,
     cleansing: 2,
     penance: 0,
+    rift_crystal: 0,
+  }
+}
+
+function createInitialNexus(): GameState['nexus'] {
+  return {
+    maps: [],
+    activeMapId: null,
+    packsCleared: 0,
   }
 }
 
@@ -218,6 +228,7 @@ export function createInitialState(classId: ClassId = 'warlord'): GameState {
     inventory: createInitialInventory(),
     equipment,
     currencies: createInitialCurrencies(),
+    nexus: createInitialNexus(),
     combat: createInitialCombat(zones[0]),
     lastSaveTime: Date.now(),
     saveVersion: 1,
@@ -240,6 +251,8 @@ interface GameActions {
   convertBlankSupport: (itemId: string, supportId: string) => void
   claimGemItem: (itemId: string) => void
   useCurrency: (itemId: string, currencyId: string) => void
+  craftNexusMap: (tier: number) => void
+  openNexusMap: (mapId: string) => void
   toggleAutoSell: (type: 'normal' | 'magic') => void
   allocateNode: (nodeId: string) => void
   refundNode: (nodeId: string) => void
@@ -273,6 +286,16 @@ function getInitialState(): GameState {
       gamePhase: loaded.gamePhase ?? 'class-select',
       tickCounter: loaded.tickCounter ?? 0,
       previousZoneId: loaded.previousZoneId ?? null,
+      nexus: loaded.nexus && Array.isArray(loaded.nexus.maps)
+        ? {
+            maps: loaded.nexus.maps,
+            activeMapId: typeof loaded.nexus.activeMapId === 'string' ? loaded.nexus.activeMapId : null,
+            packsCleared: typeof loaded.nexus.packsCleared === 'number' && Number.isFinite(loaded.nexus.packsCleared)
+              ? Math.max(0, Math.floor(loaded.nexus.packsCleared))
+              : 0,
+          }
+        : createInitialNexus(),
+      currencies: { rift_crystal: 0, ...loaded.currencies },
       offlineSeconds: offlineSeconds > 0 ? offlineSeconds : 0,
       offlineSummary: null,
     }
@@ -291,8 +314,12 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
       nextState.combat.events = [...state.combat.events, ...events].slice(-50)
 
       const zone = nextState.zones.find(candidate => candidate.id === nextState.activeZoneId)
+      const nexusMap = nextState.nexus.activeMapId
+        ? nextState.nexus.maps.find(map => map.id === nextState.nexus.activeMapId)
+        : null
+      const progressionZone = zone ?? (nexusMap ? nexusZoneForMap(nexusMap) : null)
       const killCount = events.filter(event => event.type === 'monsterDied').length
-      if (zone && killCount > 0) {
+      if (progressionZone && killCount > 0) {
         const ownedGemIds = [
           ...nextState.character.ownedGems.map(gem => gem.id),
           ...nextState.inventory.items.flatMap(item => item.gemId ? [item.gemId] : []),
@@ -300,7 +327,7 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
         const progression = addProgressionDropsToInventory(
           nextState.inventory.items,
           nextState.inventory.maxSize,
-          zone.level,
+          progressionZone.level,
           ownedGemIds,
           killCount,
         )
@@ -331,11 +358,38 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
     })
   },
 
+  craftNexusMap: (tier: number) => {
+    set(state => {
+      const cost = nexusMapCrystalCost(tier)
+      if ((state.currencies.rift_crystal || 0) < cost) return state
+      const currencies = { ...state.currencies, rift_crystal: (state.currencies.rift_crystal || 0) - cost }
+      const map = createNexusMap(tier)
+      return { ...state, currencies, nexus: { ...state.nexus, maps: [...state.nexus.maps, map] } }
+    })
+  },
+
+  openNexusMap: (mapId: string) => {
+    set(state => {
+      if (state.nexus.activeMapId || state.activeTrial) return state
+      const map = (Array.isArray(state.nexus.maps) ? state.nexus.maps : []).find(candidate => candidate.id === mapId)
+      if (!map || map.currentCharges <= 0) return state
+      const nexusZone = nexusZoneForMap(map)
+      return {
+        ...state,
+        nexus: { ...state.nexus, activeMapId: mapId, packsCleared: 0 },
+        activeZoneId: nexusZone.id,
+        previousZoneId: state.activeZoneId,
+        combat: createInitialCombat(nexusZone),
+      }
+    })
+  },
+
   selectZone: (zoneId: string) => {
     set(state => {
+      if (state.nexus.activeMapId || state.activeTrial) return state
       const zone = state.zones.find(z => z.id === zoneId)
       if (!zone || !zone.unlocked) return state
-      return { ...state, activeZoneId: zoneId, combat: createInitialCombat(zone) }
+      return { ...state, activeZoneId: zoneId, previousZoneId: null, combat: createInitialCombat(zone) }
     })
   },
 
@@ -720,6 +774,7 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
       if (!zone) return state
       return {
         ...state,
+        nexus: { ...state.nexus, activeMapId: null, packsCleared: 0 },
         activeZoneId: zone.id,
         previousZoneId: null,
         activeTrial: null,

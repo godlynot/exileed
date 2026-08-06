@@ -1,8 +1,63 @@
 import { PASSIVE_TREE } from '../data/passiveTree.ts'
-import type { GameState } from '../types/game.ts'
+import type { GameState, MapAffix, NexusMap } from '../types/game.ts'
+import { MAP_AFFIXES_BY_ID } from '../data/mapAffixes.ts'
+import { clampNexusTier, nexusMapChargesForTier, nexusTierLevel } from './nexus.ts'
 
 export const SAVE_VERSION = 5
 export const SAVE_KEY = 'riftidler_save_v4'
+
+function normalizeNexusState(value: unknown): GameState['nexus'] {
+  if (!value || typeof value !== 'object') {
+    return { maps: [], activeMapId: null, packsCleared: 0 }
+  }
+
+  const raw = value as { maps?: unknown; activeMapId?: unknown; packsCleared?: unknown }
+  const maps: NexusMap[] = Array.isArray(raw.maps)
+    ? raw.maps.flatMap(candidate => {
+        if (!candidate || typeof candidate !== 'object') return []
+        const map = candidate as Partial<NexusMap>
+        if (typeof map.id !== 'string' || map.id.length === 0) return []
+        const tier = clampNexusTier(typeof map.tier === 'number' ? map.tier : 1)
+        const maxCharges = nexusMapChargesForTier(tier)
+        const currentCharges = typeof map.currentCharges === 'number' && Number.isFinite(map.currentCharges)
+          ? Math.max(0, Math.min(maxCharges, Math.floor(map.currentCharges)))
+          : maxCharges
+        const affixes: MapAffix[] = Array.isArray(map.affixes)
+          ? map.affixes.flatMap(candidate => {
+              if (!candidate || typeof candidate !== 'object') return []
+              const rawAffix = candidate as Partial<MapAffix>
+              if (typeof rawAffix.id !== 'string' || !MAP_AFFIXES_BY_ID[rawAffix.id]) return []
+              if (typeof rawAffix.value !== 'number' || !Number.isFinite(rawAffix.value)) return []
+              const tierValue = typeof rawAffix.tier === 'number' && Number.isFinite(rawAffix.tier)
+                ? Math.max(1, Math.min(4, Math.floor(rawAffix.tier)))
+                : 1
+              return [{ id: rawAffix.id, tier: tierValue, value: Math.max(0, Math.floor(rawAffix.value)) }]
+            })
+          : []
+        return [{
+          id: map.id,
+          tier,
+          monsterLevel: typeof map.monsterLevel === 'number' && Number.isFinite(map.monsterLevel)
+            ? map.monsterLevel
+            : nexusTierLevel(tier),
+          affixes,
+          maxCharges,
+          currentCharges,
+          createdAt: typeof map.createdAt === 'number' && Number.isFinite(map.createdAt) ? map.createdAt : 0,
+        }]
+      })
+    : []
+
+  return {
+    maps,
+    activeMapId: typeof raw.activeMapId === 'string' && maps.some(map => map.id === raw.activeMapId)
+      ? raw.activeMapId
+      : null,
+    packsCleared: typeof raw.packsCleared === 'number' && Number.isFinite(raw.packsCleared)
+      ? Math.max(0, Math.floor(raw.packsCleared))
+      : 0,
+  }
+}
 
 export function serializeSave(state: GameState): string {
   // Offline progress fields are runtime-only (computed on boot), never persisted.
@@ -57,6 +112,15 @@ function migrateSave(parsed: Record<string, unknown>): Partial<GameState> {
     if (combat.packNamedEliteCount === undefined) combat.packNamedEliteCount = 0
   }
 
+  // Nexus: ensure the nexus state and rift_crystal currency exist on old saves.
+  if (!state.nexus) {
+    state.nexus = { maps: [], activeMapId: null, packsCleared: 0 }
+  }
+  if (state.currencies) {
+    const currencies = state.currencies as Record<string, unknown>
+    if (currencies.rift_crystal === undefined) currencies.rift_crystal = 0
+  }
+
   // Refund passive points from any old tree data and reset to the class root.
   // Node IDs from prior passive tree versions do not map to the new 80-node graph.
   const oldAllocated = character.allocatedNodes ?? []
@@ -67,6 +131,7 @@ function migrateSave(parsed: Record<string, unknown>): Partial<GameState> {
   return {
     ...state,
     character,
+    nexus: normalizeNexusState(state.nexus),
     passiveTree: PASSIVE_TREE,
     saveVersion: SAVE_VERSION,
     tickCounter: state.tickCounter ?? 0,
@@ -84,7 +149,10 @@ export function deserializeSave(data: string): GameState | null {
       }
       return null
     }
-    return parsed as GameState
+    return {
+      ...parsed,
+      nexus: normalizeNexusState(parsed.nexus),
+    } as GameState
   } catch (e) {
     console.error('Failed to deserialize save', e)
     return null

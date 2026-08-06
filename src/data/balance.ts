@@ -29,10 +29,14 @@ export const DAMAGE = {
   DEFAULT_CRIT_MULTIPLIER: 1.5,
   EVASION_CAP: 0.95,
   EVASION_STREAK_BONUS_PER_STACK: 0.10, // +10% flat hit chance per consecutive dodge
-  EVASION_STREAK_BONUS_MAX: 0.50,       // capped at +50% hit chance
+  EVASION_STREAK_BONUS_MAX: 0.50,       // capped at +50% flat hit chance
   RESISTANCE_CAP: 0.75,
   ARMOUR_MITIGATION_DENOMINATOR: 5,
 } as const
+
+// Defensive base stats should remain valuable without scaling into near-immunity
+// when the campaign's front-loaded monster curve reaches its later acts.
+export const DEFENSIVE_GEAR_SCALING_EXPONENT = 0.75
 
 export const EXPERIENCE = {
   BASE_XP: 100,

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, spyOn } from 'bun:test'
-import { GEMS } from '../data/balance.ts'
+import { DEFENSIVE_GEAR_SCALING_EXPONENT, GEMS, monsterScalingMultiplier } from '../data/balance.ts'
 import { BASE_ITEMS } from '../data/items.ts'
 import { SKILLS } from '../data/skills.ts'
 import { SUPPORTS } from '../data/supports.ts'
@@ -13,6 +13,7 @@ import {
   applyOrb,
   createItem,
   diagnoseItems,
+  recalculateItem,
   RARITY_RANGE,
   MAX_PREFIXES,
   MAX_SUFFIXES,
@@ -91,6 +92,20 @@ describe('progression loot', () => {
 
     expect(gemIds.length).toBeGreaterThan(0)
     expect(new Set(gemIds).size).toBe(gemIds.length)
+  })
+})
+
+describe('defensive gear scaling', () => {
+  it('dampens late defensive base growth without changing the base item contract', () => {
+    const item = createItem('battered_chest', 45, 'normal')
+    const expectedArmour = Math.floor(
+      BASE_ITEMS.battered_chest.armour! * Math.pow(monsterScalingMultiplier(45), DEFENSIVE_GEAR_SCALING_EXPONENT),
+    )
+    const fullCurveArmour = Math.floor(BASE_ITEMS.battered_chest.armour! * monsterScalingMultiplier(45))
+
+    expect(recalculateItem(item).armour).toBe(expectedArmour)
+    expect(item.armour).toBe(expectedArmour)
+    expect(item.armour).toBeLessThan(fullCurveArmour)
   })
 })
 

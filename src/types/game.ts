@@ -250,6 +250,37 @@ export interface Zone {
   killProgress: number // 0-100%
   killsRequired: number
   unlocked: boolean
+  // Generated Nexus zones carry the rolled map modifiers without adding a second
+  // combat-state representation. Campaign zones leave this unset.
+  mapAffixes?: MapAffix[]
+}
+
+export interface MapAffix {
+  // Rolled when a Nexus map is created and persisted with the map item.
+  id: string
+  tier: number
+  value: number
+}
+
+export interface MapItem {
+  id: string
+  tier: number
+  monsterLevel: number
+  affixes: MapAffix[]
+  maxCharges: number
+  currentCharges: number
+  createdAt: number
+}
+
+// Compatibility alias for the endgame systems introduced during Stage 1.
+export type NexusMap = MapItem
+
+export interface NexusState {
+  // The map collection is mirrored into InventoryState.maps so the UI can keep
+  // maps in a protected, distinct inventory section.
+  maps: NexusMap[]
+  activeMapId: string | null
+  packsCleared: number
 }
 
 export type DamageType = 'physical' | 'lightning' | 'fire' | 'cold' | 'chaos'
@@ -315,6 +346,8 @@ export type CombatEvent =
   | { id: string; timestamp: number; type: 'monsterDied'; monsterId: string; monsterType: string }
   | { id: string; timestamp: number; type: 'playerDied' }
   | { id: string; timestamp: number; type: 'itemDropped'; itemId: string; rarity: ItemRarity }
+  | { id: string; timestamp: number; type: 'riftCrystalGained'; amount: number }
+  | { id: string; timestamp: number; type: 'nexusMapCompleted' }
   | { id: string; timestamp: number; type: 'xpGained'; amount: number }
   | { id: string; timestamp: number; type: 'levelUp'; newLevel: number }
   | { id: string; timestamp: number; type: 'zoneProgress'; current: number; total: number }
@@ -601,6 +634,7 @@ export interface GameState {
   inventory: InventoryState
   equipment: Equipment
   currencies: Record<string, number>
+  nexus: NexusState
   combat: CombatState
   lastSaveTime: number
   saveVersion: number

@@ -6,7 +6,7 @@ import { SUPPORTS } from '../data/supports.ts'
 import { GEMS } from '../data/balance.ts'
 import { ALL_AFFIXES } from '../data/affixes.ts'
 import { CLASSES } from '../data/classes.ts'
-import { CHARACTER, DAMAGE, RECOVERY, monsterScalingMultiplier } from '../data/balance.ts'
+import { CHARACTER, DAMAGE, DEFENSIVE_GEAR_SCALING_EXPONENT, RECOVERY, monsterScalingMultiplier } from '../data/balance.ts'
 
 // ── Rarity affix range invariants ──────────────────────────────────────────
 // These are the authoritative floor/ceiling for every rarity tier.
@@ -281,6 +281,7 @@ export function recalculateItem(item: Item): Item {
   // Gear base stats scale with the same act curve as monsters so a level 90
   // weapon/armour is meaningfully better than a level 1 weapon/armour.
   const levelMultiplier = monsterScalingMultiplier(item.itemLevel)
+  const defensiveLevelMultiplier = Math.pow(levelMultiplier, DEFENSIVE_GEAR_SCALING_EXPONENT)
 
   const recalculated: Item = {
     ...item,
@@ -291,8 +292,8 @@ export function recalculateItem(item: Item): Item {
     flatColdDamageMin: 0,
     flatColdDamageMax: 0,
     attackRate: base.attackRate || 0,
-    armour: Math.floor((base.armour || 0) * levelMultiplier),
-    evasion: Math.floor((base.evasion || 0) * levelMultiplier),
+    armour: Math.floor((base.armour || 0) * defensiveLevelMultiplier),
+    evasion: Math.floor((base.evasion || 0) * defensiveLevelMultiplier),
     energyShield: Math.floor((base.energyShield || 0) * levelMultiplier),
     life: Math.floor((base.life || 0) * levelMultiplier),
     chanceToBleed: 0,

@@ -50,9 +50,9 @@ export const PREFIXES: AffixDefinition[] = [
   makeAffix('armour_rating', 'prefix', 'armour', 'Reinforced', ['helmet', 'body', 'gloves', 'boots', 'belt', 'offhand'], [
     { level: 1, min: 5, max: 12 },
     { level: 10, min: 18, max: 45 },
-    { level: 25, min: 110, max: 260 },
-    { level: 45, min: 650, max: 1500 },
-    { level: 70, min: 2000, max: 5000 },
+    { level: 25, min: 70, max: 160 },
+    { level: 45, min: 280, max: 650 },
+    { level: 70, min: 900, max: 2200 },
   ]),
   // Attribute prefixes
   makeAffix('strength', 'prefix', 'strength', 'Mighty', ['helmet', 'body', 'gloves', 'boots', 'belt', 'amulet', 'ring'], [
@@ -241,9 +241,9 @@ export const SUFFIXES: AffixDefinition[] = [
   makeAffix('evasion_suf', 'suffix', 'evasion', 'of the Ghost', ['helmet', 'body', 'gloves', 'boots'], [
     { level: 1, min: 5, max: 12 },
     { level: 10, min: 18, max: 45 },
-    { level: 25, min: 110, max: 260 },
-    { level: 45, min: 650, max: 1500 },
-    { level: 70, min: 2000, max: 5000 },
+    { level: 25, min: 70, max: 160 },
+    { level: 45, min: 280, max: 650 },
+    { level: 70, min: 900, max: 2200 },
   ]),
   makeAffix('increased_armour_suf', 'suffix', 'increasedArmourPercent', 'of the Mountain', ['helmet', 'body', 'gloves', 'boots', 'belt', 'offhand'], [
     { level: 1, min: 5, max: 12 },

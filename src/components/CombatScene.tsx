@@ -18,6 +18,8 @@ function eventColor(event: CombatEvent) {
   }
   if (event.type === 'hitAvoided') return 'text-gray-400'
   if (event.type === 'monsterDied') return 'text-yellow-400'
+  if (event.type === 'riftCrystalGained') return 'text-cyan-300'
+  if (event.type === 'nexusMapCompleted') return 'text-[#b57eff]'
   return 'text-white'
 }
 
@@ -25,12 +27,20 @@ function eventLabel(event: CombatEvent) {
   if (event.type === 'hitAvoided') return event.reason === 'evaded' ? 'Dodge' : 'Miss'
   if (event.type === 'monsterDied') return 'Kill!'
   if (event.type === 'hitLanded') return event.damage.toString()
+  if (event.type === 'riftCrystalGained') return `+${event.amount} Crystal${event.amount === 1 ? '' : 's'}`
+  if (event.type === 'nexusMapCompleted') return 'Nexus complete!'
   return ''
 }
 
 export function CombatScene({ character, combat }: CombatSceneProps) {
   const visibleEvents = useMemo(
-    () => combat.events.filter(e => e.type === 'hitLanded' || e.type === 'hitAvoided' || e.type === 'monsterDied'),
+    () => combat.events.filter(e =>
+      e.type === 'hitLanded' ||
+      e.type === 'hitAvoided' ||
+      e.type === 'monsterDied' ||
+      e.type === 'riftCrystalGained' ||
+      e.type === 'nexusMapCompleted'
+    ),
     [combat.events]
   )
 
@@ -71,6 +81,8 @@ export function CombatScene({ character, combat }: CombatSceneProps) {
                   <span className="flex items-center gap-1">
                     <Skull className="w-3 h-3" /> {eventLabel(event)}
                   </span>
+                ) : event.type === 'riftCrystalGained' || event.type === 'nexusMapCompleted' ? (
+                  <span>{eventLabel(event)}</span>
                 ) : (
                   <span>{event.source === 'player' ? 'You' : activeMonster?.name ?? 'Monster'} {eventLabel(event)}</span>
                 )}

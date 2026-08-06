@@ -354,7 +354,9 @@ for (const r of rows) {
   if (r.hitsToDie < 6) {
     problems.push(`${r.zone}: dies in ${r.hitsToDie.toFixed(1)} hits — too spiky for an idle game (aim 8-20)`)
   }
-  if (r.hitsToDie > 40) {
+  // Boss-only zones are endurance encounters rather than repeatable trash
+  // pacing, so the trash hits-to-die band does not apply to them.
+  if (r.hitsToDie > 40 && !r.isBossOnly) {
     problems.push(`${r.zone}: dies in ${r.hitsToDie.toFixed(0)} hits — no tension`)
   }
 }

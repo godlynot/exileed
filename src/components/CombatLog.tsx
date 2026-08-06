@@ -66,6 +66,10 @@ function formatEvent(event: CombatEvent): { text: string; color: string } {
       return { text: `A ${event.monsterType} joins the pack`, color: 'text-orange-300' }
     case 'packCleared':
       return { text: `Pack cleared (${event.size})`, color: 'text-yellow-300' }
+    case 'riftCrystalGained':
+      return { text: `+${event.amount} Rift Crystal${event.amount === 1 ? '' : 's'}`, color: 'text-cyan-300' }
+    case 'nexusMapCompleted':
+      return { text: 'Nexus map completed', color: 'text-[#b57eff]' }
     case 'bandHit':
       return { text: `${event.skillName} hits ${event.targetCount} targets`, color: 'text-cyan-400' }
     default:
