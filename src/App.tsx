@@ -15,6 +15,7 @@ import { CraftingPanel } from './components/CraftingPanel.tsx'
 import { PassiveTreePanel } from './components/PassiveTreePanel.tsx'
 import { AscendancyTree } from './components/AscendancyTree.tsx'
 import { SkillsPanel } from './components/SkillsPanel.tsx'
+import { NexusRunStatus } from './components/NexusRunStatus.tsx'
 import { OfflineProgressOverlay } from './components/OfflineProgressOverlay.tsx'
 import { ASCENDANCIES, TRIALS } from './data/ascendancies.ts'
 
@@ -230,6 +231,7 @@ function App() {
               {monster ? (monster.rarity === 'boss' ? 'Boss' : `Level ${monster.level}`) : 'No enemy'}
             </div>
           </div>
+          <NexusRunStatus />
           <CombatScene character={character} combat={combat} />
 
           <CombatLog events={combat.events} />

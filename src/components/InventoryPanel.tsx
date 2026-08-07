@@ -6,6 +6,7 @@ import { isBlankSupport, isGemItem, isNonEquipmentItem, rarityTextClass } from '
 import type { Item } from '../types/item.ts'
 import { SUPPORTS } from '../data/supports.ts'
 import { mapAffixDescription } from '../data/mapAffixes.ts'
+import { nexusMapPacksForTier } from '../systems/nexus.ts'
 
 export function InventoryPanel() {
   const inventory = useGameStore(state => state.inventory)
@@ -160,28 +161,56 @@ export function InventoryPanel() {
       {/* Nexus Maps */}
       {nexus.maps.length > 0 && (
         <div className="border-t border-[#2e303a] pt-4 mt-4">
-          <h3 className="text-sm font-medium text-[#7e14ff] mb-2">Nexus Maps</h3>
-          <div className="grid grid-cols-4 gap-2">
-            {nexus.maps.map(map => (
-              <button
-                key={map.id}
-                onClick={() => openNexusMap(map.id)}
-                disabled={!!nexus.activeMapId}
-                className="p-2 text-xs text-left border border-[#7e14ff]/30 bg-[#1a1525] rounded hover:bg-[#2a2040] disabled:opacity-50 transition-colors"
-              >
-                <div className="text-[#b57eff] font-medium truncate">Tier {map.tier}</div>
-                <div className="text-[10px] text-gray-400">Lvl {map.monsterLevel}</div>
-                <div className="text-[10px] text-gray-400">{map.currentCharges}/{map.maxCharges} charges</div>
-                <div className="mt-1 space-y-0.5">
-                  {map.affixes.map(affix => (
-                    <div key={`${map.id}-${affix.id}`} className="text-[10px] text-purple-200 truncate" title={mapAffixDescription(affix)}>
-                      {mapAffixDescription(affix)}
+          <div className="mb-3 flex items-start justify-between gap-3">
+            <div>
+              <h3 className="text-sm font-medium text-[#d8b8ff]">Nexus Maps</h3>
+              <p className="mt-0.5 text-[11px] text-gray-500">Choose a map to begin an endgame run.</p>
+            </div>
+            {nexus.activeMapId && (
+              <span className="rounded-full border border-[#b57eff]/30 bg-[#7e14ff]/10 px-2 py-1 text-[10px] uppercase tracking-wider text-[#d8b8ff]">
+                Map in progress
+              </span>
+            )}
+          </div>
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+            {nexus.maps.map(map => {
+              const packsRequired = nexusMapPacksForTier(map.tier)
+              const canEnter = !nexus.activeMapId && map.currentCharges > 0
+              return (
+                <button
+                  key={map.id}
+                  onClick={() => openNexusMap(map.id)}
+                  disabled={!canEnter}
+                  aria-label={`Enter Tier ${map.tier} Nexus map`}
+                  className={`group rounded-lg border p-3 text-left transition-all ${
+                    canEnter
+                      ? 'border-[#7e14ff]/40 bg-[#1a1525] hover:-translate-y-0.5 hover:border-[#b57eff]/70 hover:bg-[#2a2040] hover:shadow-[0_8px_20px_rgba(126,20,255,0.16)]'
+                      : 'border-[#2e303a] bg-[#15161d] opacity-55'
+                  }`}
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <div className="text-sm font-semibold text-[#d8b8ff]">Tier {map.tier}</div>
+                      <div className="mt-0.5 text-[10px] text-gray-500">Level {map.monsterLevel} • {packsRequired} packs</div>
                     </div>
-                  ))}
-                </div>
-                <div className="text-[10px] text-[#7e14ff]/70 mt-0.5">Enter Map →</div>
-              </button>
-            ))}
+                    <div className="text-right text-[10px] text-cyan-200">
+                      <div>{map.currentCharges}/{map.maxCharges}</div>
+                      <div className="text-gray-500">charges</div>
+                    </div>
+                  </div>
+                  <div className="mt-3 space-y-1">
+                    {map.affixes.map(affix => (
+                      <div key={`${map.id}-${affix.id}`} className="truncate text-[10px] text-purple-200" title={mapAffixDescription(affix)}>
+                        {mapAffixDescription(affix)}
+                      </div>
+                    ))}
+                  </div>
+                  <div className={`mt-3 text-[10px] font-medium uppercase tracking-wider ${canEnter ? 'text-[#b57eff] group-hover:text-white' : 'text-gray-600'}`}>
+                    {map.currentCharges <= 0 ? 'Depleted' : canEnter ? 'Enter map →' : 'Finish current map first'}
+                  </div>
+                </button>
+              )
+            })}
           </div>
         </div>
       )}

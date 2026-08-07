@@ -4,8 +4,7 @@ import { CURRENCIES } from '../data/currencies.ts'
 import { ItemTooltip } from './ItemTooltip.tsx'
 import { rarityTextClass } from '../types/item.ts'
 import type { Item } from '../types/item.ts'
-import { NEXUS_MAX_TIER, nexusMapCrystalCost } from '../systems/nexus.ts'
-import { mapAffixDescription } from '../data/mapAffixes.ts'
+import { NEXUS_MAX_TIER, nexusMapCrystalCost, nexusMapPacksForTier } from '../systems/nexus.ts'
 
 export function CraftingPanel() {
   const inventory = useGameStore(state => state.inventory)
@@ -93,13 +92,21 @@ export function CraftingPanel() {
           })}
         </div>
         {nexus.maps.length > 0 && (
-          <div className="mt-2 text-[10px] text-gray-500">
-            {nexus.maps.length} map{nexus.maps.length !== 1 && 's'} owned •{' '}
-            {nexus.activeMapId ? 'Map in progress' : 'Select a map from Inventory'}
-            <div className="mt-1 space-y-0.5">
-              {nexus.maps.slice(0, 1).flatMap(map => map.affixes.map(affix => (
-                <div key={`${map.id}-${affix.id}`} className="text-purple-200/80">{mapAffixDescription(affix)}</div>
-              )))}
+          <div className="mt-3 rounded-lg border border-[#7e14ff]/20 bg-[#1a1525]/60 p-3 text-[11px] text-gray-400">
+            <div className="flex items-center justify-between gap-2">
+              <span>{nexus.maps.length} map{nexus.maps.length !== 1 && 's'} owned</span>
+              <span className="text-[#d8b8ff]">{nexus.activeMapId ? 'Map in progress' : 'Open from Inventory'}</span>
+            </div>
+            <div className="mt-2 grid gap-1.5 sm:grid-cols-2">
+              {nexus.maps.slice(0, 4).map(map => (
+                <div key={map.id} className="rounded border border-[#2e303a] bg-[#15161d] px-2 py-1.5">
+                  <div className="flex items-center justify-between text-[#b57eff]">
+                    <span>Tier {map.tier}</span>
+                    <span className="text-cyan-200">{map.currentCharges}/{map.maxCharges}</span>
+                  </div>
+                  <div className="mt-0.5 text-[10px] text-gray-500">{nexusMapPacksForTier(map.tier)} packs to clear</div>
+                </div>
+              ))}
             </div>
           </div>
         )}
