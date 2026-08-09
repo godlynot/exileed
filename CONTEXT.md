@@ -132,9 +132,11 @@ The user explicitly rejected cutting load-bearing systems. The following reduce 
 - [x] Wire offline progress on startup (offline overlay simulates away-time capped at 8h, chunked by hour)
 - [x] Call `loadGame()` on app boot
 - [ ] Implement party/minion system so Herald auras and Marshal armies target the whole party set
-- [ ] Nexus endgame / Rift Crystals
+- [x] Nexus Stage 1: Rift Crystals, tiered maps, charges, entry, and completion return
+- [x] Nexus Stage 2: rolled map affixes and map-modified monster/reward effects
+- [ ] Nexus Stage 3: tier-completion bonuses (design values/mechanics not yet approved)
+- [ ] Nexus Stage 4: pinnacle encounter, The Primeval Sovereign (design not yet approved)
 - [ ] 6 unique items
-- [ ] Full map affix rolling
 - [ ] Remove or use `konva` / `react-konva` dependencies
 
 ---
@@ -229,15 +231,16 @@ Avoid all Path of Exile trademarked terms.
 - `bun run dev` and `bun run build` must work out of the box.
 - `BALANCE.md` and `src/data/balance.ts` document tuning constants.
 - No environment variables.
-- Offline progress constants exist but the loading overlay is not yet implemented.
+- Offline progress is wired through the startup overlay and chunked simulation; balance tuning remains separate from system implementation.
 
 ---
 
 ## 9. Open Questions Remaining
 
-1. Should we move to the Nexus endgame next, or polish existing systems?
-2. Should we wire the offline progress overlay now, or after the endgame is sketched?
-3. Should we remove the unused `konva` and `react-konva` dependencies?
+1. What are the approved mechanics and values for Nexus Stage 3 tier-completion bonuses?
+2. What are the approved mechanics, access condition, phases, and rewards for Stage 4's Primeval Sovereign encounter?
+3. Should we implement the party/minion target-set abstraction before adding more aura/army effects?
+4. Should we remove the unused `konva` and `react-konva` dependencies?
 
 ---
 
@@ -255,4 +258,4 @@ Avoid all Path of Exile trademarked terms.
 
 ---
 
-*Last updated: 2026-08-04 (Magic/Rare affix count bands and crafting invariants documented)*
+*Last updated: 2026-08-07 (Nexus Stages 1–2 and map-affix implementation documented)*

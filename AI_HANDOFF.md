@@ -10,7 +10,7 @@
 |---|---|
 | **Game** | *Rift Idler* — an idle/incremental ARPG inspired by Path of Exile systems |
 | **Repo** | `godlynot/exileed` |
-| **Milestone** | M4.5 complete (skill/ascendancy systems wired); M5 endgame pending |
+| **Milestone** | M4.5 and campaign complete; Nexus Stages 1–2 shipped, Stage 3/4 design pending |
 | **Stack** | React 19, Vite, TypeScript, Tailwind CSS, Zustand, Framer Motion |
 | **Persistence** | `localStorage` only (autosave every ~30s) |
 | **Entry** | `src/main.tsx` → `src/App.tsx` |
@@ -202,7 +202,14 @@ Ascendancy mechanics wired in `combat.ts` / `passives.ts`:
 - `serializeSave` base64-encodes the full `GameState`
 - `deserializeSave` runs migration for older save versions
 - Current migration resets passive allocations to the class root (tree changed), preserves ascendancy points, adds new combat fields
-- Not yet called on app boot (`loadGame()` is defined but unused)
+- `loadGame()` is called during app boot and offline progress is simulated in the startup overlay
+
+### 4.10 Nexus Endgame
+
+- Stage 1 is shipped in `src/systems/nexus.ts`: Rift Crystals, tiered map items, charges, map entry, pack progression, completion return, and Act 8 boss rewards.
+- Stage 2 is shipped: maps roll affixes from `src/data/mapAffixes.ts`, and those effects modify Nexus monster stats and rewards.
+- The active run status is shown by `src/components/NexusRunStatus.tsx`; map entry and map details are exposed in Inventory and Crafting.
+- Stage 3 tier-completion bonuses and Stage 4's Primeval Sovereign encounter are intentionally not implemented because their mechanics and values are not yet approved.
 
 ---
 
@@ -213,20 +220,21 @@ Ascendancy mechanics wired in `combat.ts` / `passives.ts`:
 - M1 core loop
 - M2 items, crafting, inventory, equipment, tooltips
 - M3 passive tree, allocation, keystone hooks
-- M4 campaign zones 1–3, combat depth, event system, combat log, stat summary
+- M4 campaign zones 1–8, combat depth, event system, combat log, stat summary
 - M4.5 skills, supports, ascendancy redesign, choice-keystone pickers, skill/ascendancy combat hooks
+- M5 offline progress and startup save loading
+- Nexus Stages 1–2: Rift Crystals, tiered maps, charges, map affixes, map entry/completion, and run-status UI
 - Twin Heralds and Herald of Gold item bonuses
 - Build/typecheck/validation pass
 
 **Open / next:**
 
-- Complete campaign zones 4–8
-- Wire `loadGame()` and offline progress overlay
+- Nexus Stage 3: approve and implement tier-completion bonuses
+- Nexus Stage 4: approve and implement the Primeval Sovereign encounter
 - Herald/Marshal party-set effects (v1 self-buff limitation documented in `combat.ts`)
-- Nexus endgame / Rift Crystals
 - 6 unique items
-- Full map affix rolling
 - Remove unused `konva` / `react-konva` dependencies
+- Balance pass after the remaining systems are complete
 
 ---
 
@@ -271,4 +279,4 @@ bun run validate:ascendancies
 ---
 
 *Generated: 2026-07-22*
-*Last updated: 2026-08-04 (Magic/Rare affix count bands and crafting invariants documented)*
+*Last updated: 2026-08-07 (Nexus Stages 1–2 and shipped campaign status documented)*

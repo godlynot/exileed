@@ -1,11 +1,46 @@
 import { describe, expect, it } from 'bun:test'
-import { deserializeSave, SAVE_VERSION } from './save.ts'
+import { createInitialState } from '../store/gameStore.ts'
+import { deserializeSave, serializeSave, SAVE_VERSION } from './save.ts'
 
 function encode(value: unknown): string {
   return btoa(JSON.stringify(value))
 }
 
 describe('save normalization', () => {
+  it('rejects malformed and future save payloads instead of loading them', () => {
+    expect(deserializeSave(encode('not-a-save-object'))).toBeNull()
+    expect(deserializeSave(encode({ saveVersion: SAVE_VERSION + 1 }))).toBeNull()
+  })
+
+  it('falls back to an empty Nexus state when a current save omits it', () => {
+    const loaded = deserializeSave(encode({ saveVersion: SAVE_VERSION, nexus: undefined })) as unknown as {
+      nexus: { maps: unknown[]; activeMapId: string | null; packsCleared: number }
+    }
+
+    expect(loaded.nexus).toEqual({ maps: [], activeMapId: null, packsCleared: 0 })
+  })
+
+  it('does not persist runtime-only offline fields', () => {
+    const state = createInitialState('warlord')
+    const serialized = serializeSave({
+      ...state,
+      offlineSeconds: 3600,
+      offlineSummary: {
+        seconds: 3600,
+        xpGained: 10,
+        goldGained: 20,
+        kills: 3,
+        levelsGained: 1,
+        itemsFound: 2,
+      },
+    })
+    const parsed = JSON.parse(atob(serialized)) as Record<string, unknown>
+
+    expect(parsed.saveVersion).toBe(SAVE_VERSION)
+    expect(parsed.offlineSeconds).toBeUndefined()
+    expect(parsed.offlineSummary).toBeUndefined()
+  })
+
   it('normalizes malformed Nexus data in a current-version save', () => {
     const loaded = deserializeSave(encode({
       saveVersion: SAVE_VERSION,
