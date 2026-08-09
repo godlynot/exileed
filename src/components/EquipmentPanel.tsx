@@ -62,7 +62,7 @@ function getAffixCountLabel(item: Item): string | null {
 function EquipmentSlot({ slot, item, onUnequip }: { slot: SlotConfig; item: Item | null; onUnequip: (slot: keyof EquipmentType) => void }) {
   const [hovered, setHovered] = useState(false)
 
-  const borderClass = item ? rarityBorderClass(item.rarity) : 'border-[#2e303a] border-dashed'
+  const borderClass = item ? rarityBorderClass(item.rarity) : 'border-[var(--border)] border-dashed'
   const leftBorder = item ? { borderLeft: `2px solid ${RARITY_COLORS[item.rarity]}` } : undefined
 
   return (
@@ -70,16 +70,22 @@ function EquipmentSlot({ slot, item, onUnequip }: { slot: SlotConfig; item: Item
       className={`relative ${slot.gridClass}`}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
-    >      <div className={`min-h-[4.5rem] bg-[#15161d] border ${borderClass} rounded p-2 flex flex-col justify-between cursor-pointer hover:bg-[#1f2028] transition-colors`}
-        style={leftBorder}
+    >
+      <div
+        className={`min-h-[4.5rem] rounded border ${borderClass} bg-[var(--bg-elevated)] p-2 flex flex-col justify-between hover:bg-[var(--border)] transition-colors`}
+        style={{ ...leftBorder }}
       >
-        <div className="flex items-center justify-between gap-1 min-w-0">
-          <span className="text-[10px] uppercase tracking-wider text-gray-500 truncate">{slot.label}</span>
+        <div className="flex min-w-0 items-center justify-between gap-1">
+          <span className="truncate text-[10px] uppercase tracking-wider text-gray-500">{slot.label}</span>
           {item && (
             <button
               onClick={() => onUnequip(slot.key)}
-              className="w-4 h-4 shrink-0 bg-[#2e303a] hover:bg-red-900/80 rounded text-[10px] flex items-center justify-center opacity-0 hover:opacity-100 focus:opacity-100 transition-opacity"
-              title="Unequip"
+              className="flex h-4 w-4 shrink-0 items-center justify-center rounded bg-[var(--border)] text-[10px] opacity-0 transition-opacity hover:bg-red-900/80 hover:opacity-100 focus:opacity-100"
+              title={`Unequip ${item.name}`}
+              aria-label={`Unequip ${item.name} from ${slot.label}`}
+              onFocus={() => setHovered(true)}
+              onBlur={() => setHovered(false)}
+              type="button"
             >
               ×
             </button>
@@ -87,24 +93,24 @@ function EquipmentSlot({ slot, item, onUnequip }: { slot: SlotConfig; item: Item
         </div>
 
         {item ? (
-          <div className="space-y-0.5 min-w-0">
-            <div className={`text-xs font-medium leading-tight truncate ${rarityTextClass(item.rarity)}`}>
+          <div className="min-w-0 space-y-0.5">
+            <div className={`truncate text-xs font-medium leading-tight ${rarityTextClass(item.rarity)}`}>
               {item.name}
             </div>
-            <div className="text-[10px] text-gray-400 truncate">
+            <div className="truncate text-[10px] text-gray-400">
               {getPrimaryStatLine(item) || '\u00A0'}
             </div>
-            <div className="text-[10px] text-gray-500 truncate">
+            <div className="truncate text-[10px] text-gray-500">
               {getAffixCountLabel(item) || '\u00A0'}
             </div>
           </div>
         ) : (
-          <div className="text-xs text-gray-600 italic">Empty</div>
+          <div className="text-xs italic text-gray-600">Empty</div>
         )}
       </div>
 
       {hovered && item && (
-        <div className="absolute z-50 left-1/2 -translate-x-1/2 bottom-full mb-2 w-64">
+        <div className="absolute bottom-full left-1/2 z-50 mb-2 w-64 -translate-x-1/2">
           <ItemTooltip item={item} />
         </div>
       )}
@@ -118,16 +124,16 @@ export function EquipmentPanel() {
 
   return (
     <div className="space-y-4">
-      <h2 className="text-lg font-serif text-[#d4a017]">Equipment</h2>
+      <h2 className="text-lg font-serif text-[var(--accent-gold)]">Equipment</h2>
 
       <div className="space-y-4">
-        <div className="relative bg-[#0b0c10]/50 border border-[#2e303a] rounded-lg p-3">
+        <div className="game-panel relative p-3">
           {/* Human figure silhouette */}
-          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-            <div className="w-20 h-32 bg-[#1f2028]/40 rounded-full" />
+          <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+            <div className="h-32 w-20 rounded-full bg-[var(--bg-elevated)]/45" />
           </div>
 
-          <div className="grid grid-cols-3 grid-rows-4 gap-2 relative z-10">
+          <div className="relative z-10 grid grid-cols-3 grid-rows-4 gap-2">
             {slots.map(slot => (
               <EquipmentSlot
                 key={slot.key}

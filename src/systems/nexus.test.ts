@@ -5,6 +5,8 @@ import {
   NEXUS_LEVEL_STEP,
   NEXUS_MAX_TIER,
   NEXUS_MONSTER_POOL,
+  NEXUS_TIER_REWARD_MILESTONES,
+  nexusTierCompletionRewardForTier,
   clampNexusTier,
   createNexusMap,
   isNexusZoneId,
@@ -44,6 +46,7 @@ function makeNexus(overrides: Partial<NexusState> = {}): NexusState {
     maps: [],
     activeMapId: null,
     packsCleared: 0,
+    completedTierRewards: [],
     ...overrides,
   };
 }
@@ -208,6 +211,45 @@ describe("Nexus map affixes", () => {
 });
 
 // --- recordNexusPackClear ---
+
+describe("Nexus Stage 3 tier rewards", () => {
+  it("defines the approved milestone curve", () => {
+    expect(NEXUS_TIER_REWARD_MILESTONES).toEqual([
+      { tier: 5, amount: 5 },
+      { tier: 10, amount: 10 },
+      { tier: 15, amount: 15 },
+      { tier: 16, amount: 16 },
+    ])
+    expect(nexusTierCompletionRewardForTier(4)).toBe(0)
+    expect(nexusTierCompletionRewardForTier(5)).toBe(5)
+    expect(nexusTierCompletionRewardForTier(16)).toBe(16)
+  })
+
+  it("awards a milestone only once across repeated map clears", () => {
+    const tier = 5
+    const requiredPacks = nexusMapPacksForTier(tier)
+    const map = makeMap({ id: "milestone_map", tier, maxCharges: 2, currentCharges: 2 })
+    const first = recordNexusPackClear(makeNexus({
+      maps: [map],
+      activeMapId: map.id,
+      packsCleared: requiredPacks - 1,
+    }))
+
+    expect(first.riftCrystalReward).toBe(5)
+    expect(first.completedTier).toBe(5)
+    expect(first.nexus.completedTierRewards).toEqual([5])
+
+    const second = recordNexusPackClear(makeNexus({
+      maps: first.nexus.maps,
+      activeMapId: map.id,
+      packsCleared: requiredPacks - 1,
+      completedTierRewards: first.nexus.completedTierRewards,
+    }))
+    expect(second.riftCrystalReward).toBe(0)
+    expect(second.completedTier).toBeNull()
+    expect(second.nexus.completedTierRewards).toEqual([5])
+  })
+})
 
 describe("recordNexusPackClear", () => {
   it("returns unchanged when no map is active", () => {

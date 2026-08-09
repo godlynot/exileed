@@ -278,6 +278,7 @@ export const ZONES: Zone[] = [
     level: 51,
     monsterIds: [
       'spore_crawler',
+      'carrion_moth',
       'blight_bringer',
       'putrid_husk',
       'rot_colossus',
@@ -297,6 +298,7 @@ export const ZONES: Zone[] = [
     level: 55,
     monsterIds: [
       'spore_crawler',
+      'carrion_moth',
       'blight_bringer',
       'putrid_husk',
       'rot_colossus',

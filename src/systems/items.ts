@@ -1,12 +1,23 @@
 import type { Affix, AffixDefinition, Equipment, EquipmentBonus, Item, ItemKind, ItemRarity, ItemSlot } from '../types/item.ts'
 import type { Attributes, Character, ClassId, GameState } from '../types/game.ts'
-import { BASE_ITEMS } from '../data/items.ts'
+import { BASE_ITEMS, UNIQUE_ITEMS } from '../data/items.ts'
 import { SKILLS } from '../data/skills.ts'
 import { SUPPORTS } from '../data/supports.ts'
 import { GEMS } from '../data/balance.ts'
 import { ALL_AFFIXES } from '../data/affixes.ts'
 import { CLASSES } from '../data/classes.ts'
 import { CHARACTER, DAMAGE, DEFENSIVE_GEAR_SCALING_EXPONENT, RECOVERY, monsterScalingMultiplier } from '../data/balance.ts'
+
+const generatedDrops: Item[] = []
+
+/**
+ * Returns equipment drops created during the current simulation turn.
+ * The combat loop consumes this queue to describe auto-sold loot without
+ * changing the pure item-generation API.
+ */
+export function consumeGeneratedDrops(): Item[] {
+  return generatedDrops.splice(0, generatedDrops.length)
+}
 
 // ── Rarity affix range invariants ──────────────────────────────────────────
 // These are the authoritative floor/ceiling for every rarity tier.
@@ -276,7 +287,7 @@ export function rollAffixes(
 }
 
 export function recalculateItem(item: Item): Item {
-  const base = BASE_ITEMS[item.baseId]
+  const base = BASE_ITEMS[item.baseId] ?? UNIQUE_ITEMS[item.baseId]
   if (!base) return item
   // Gear base stats scale with the same act curve as monsters so a level 90
   // weapon/armour is meaningfully better than a level 1 weapon/armour.
@@ -309,7 +320,7 @@ export function recalculateItem(item: Item): Item {
     goldFindPercent: 0,
   }
 
-  for (const affix of recalculated.affixes) {
+  for (const affix of [...(item.implicit ?? base.implicit ?? []), ...recalculated.affixes]) {
     const value = affix.value
     switch (affix.stat) {
       case 'flatPhysicalDamage':
@@ -378,7 +389,7 @@ export function recalculateItem(item: Item): Item {
 }
 
 export function createItem(baseId: string, itemLevel: number, rarity: ItemRarity): Item {
-  const base = BASE_ITEMS[baseId]
+  const base = BASE_ITEMS[baseId] ?? UNIQUE_ITEMS[baseId]
   if (!base) throw new Error(`Unknown base item ${baseId}`)
 
   const affixCount = rarity === 'magic' || rarity === 'rare' ? randomAffixCount(rarity) : 0
@@ -387,12 +398,14 @@ export function createItem(baseId: string, itemLevel: number, rarity: ItemRarity
   const item: Item = {
     id: generateItemId(),
     baseId,
-    name: base.name,
+    name: base.uniqueName ?? base.name,
     kind: 'equipment',
     slot: base.slot,
     rarity,
     itemLevel,
     affixes,
+    implicit: base.implicit ?? [],
+    uniqueDescription: base.uniqueDescription,
     physicalDamageMin: base.physicalDamageMin || 0,
     physicalDamageMax: base.physicalDamageMax || 0,
     flatLightningDamageMin: 0,
@@ -532,6 +545,9 @@ export function calculateEquipmentBonus(equipment: Equipment): EquipmentBonus {
         case 'lightningResistance':
           bonus.resistances.lightning += value / 100
           break
+        case 'chaosResistance':
+          bonus.resistances.chaos += value / 100
+          break
         case 'chanceToBleed':
           bonus.chanceToBleed += value / 100
           break
@@ -562,6 +578,45 @@ export function calculateEquipmentBonus(equipment: Equipment): EquipmentBonus {
       case 'increasedMaxLifePercent':
         bonus.increasedMaxLifePercent += value
         break
+        case 'damageVsBossesPercent':
+          bonus.damageVsBossesPercent += value
+          break
+        case 'goldFindPercent':
+          bonus.goldFindPercent += value
+          break
+      }
+    }
+
+    // Unique implicit utility effects stay separate from rolled affixes. Base
+    // stats are already baked into the item's computed fields; these effects
+    // are the character-level pieces that need to reach the aggregate bonus.
+    for (const affix of item.implicit ?? []) {
+      const value = affix.value
+      switch (affix.stat) {
+        case 'fireResistance':
+          bonus.resistances.fire += value / 100
+          break
+        case 'coldResistance':
+          bonus.resistances.cold += value / 100
+          break
+        case 'lightningResistance':
+          bonus.resistances.lightning += value / 100
+          break
+        case 'chaosResistance':
+          bonus.resistances.chaos += value / 100
+          break
+        case 'accuracy':
+          bonus.accuracy += value
+          break
+        case 'increasedEvasionPercent':
+          bonus.increasedEvasionPercent += value
+          break
+        case 'increasedAccuracyPercent':
+          bonus.increasedAccuracyPercent += value
+          break
+        case 'increasedMaxLifePercent':
+          bonus.increasedMaxLifePercent += value
+          break
         case 'damageVsBossesPercent':
           bonus.damageVsBossesPercent += value
           break
@@ -667,7 +722,7 @@ export function recalculateCharacterFromEquipment(character: Character, equipmen
       fire: clamp(character.resistances.fire + bonus.resistances.fire, -0.75, 0.75),
       cold: clamp(character.resistances.cold + bonus.resistances.cold, -0.75, 0.75),
       lightning: clamp(character.resistances.lightning + bonus.resistances.lightning, -0.75, 0.75),
-      chaos: character.resistances.chaos,
+      chaos: clamp(character.resistances.chaos + bonus.resistances.chaos, -0.75, 0.75),
     },
   }
 }
@@ -810,11 +865,13 @@ export function addProgressionDropsToInventory(
 }
 
 export function dropItem(zoneLevel: number, modifiers: DropModifiers = {}): Item | null {
-  const baseIds = Object.keys(BASE_ITEMS)
-  if (baseIds.length === 0) return null
-  const baseId = baseIds[Math.floor(Math.random() * baseIds.length)]
   const rarity = determineDropRarity(zoneLevel, modifiers)
-  return createItem(baseId, zoneLevel, rarity)
+  const basePool = rarity === 'unique' ? Object.keys(UNIQUE_ITEMS) : Object.keys(BASE_ITEMS)
+  if (basePool.length === 0) return null
+  const baseId = basePool[Math.floor(Math.random() * basePool.length)]
+  const item = createItem(baseId, zoneLevel, rarity)
+  if (item) generatedDrops.push(item)
+  return item
 }
 
 // ── Item diagnostics ────────────────────────────────────────────────────────

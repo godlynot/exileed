@@ -98,6 +98,100 @@ export const BASE_ITEMS: Record<string, BaseItem> = {
   },
 }
 
+/** Hand-designed unique bases. They are excluded from ordinary base rolls. */
+export const UNIQUE_ITEMS: Record<string, BaseItem> = {
+  ashens_oath: {
+    id: 'ashens_oath',
+    name: 'Ashen Oath',
+    uniqueName: 'Ashen Oath',
+    uniqueDescription: 'A smoldering edge that turns every committed strike into a promise.',
+    isUniqueBase: true,
+    slot: 'weapon',
+    baseLevel: 35,
+    physicalDamageMin: 42,
+    physicalDamageMax: 78,
+    attackRate: 1.15,
+    implicit: [
+      { id: 'unique_ashens_oath_damage', type: 'prefix', name: 'Ashen edge', tier: 0, stat: 'flatPhysicalDamage', minValue: 18, maxValue: 18, value: 18 },
+      { id: 'unique_ashens_oath_speed', type: 'suffix', name: 'Cinder tempo', tier: 0, stat: 'attackSpeed', minValue: 12, maxValue: 12, value: 12 },
+    ],
+  },
+  tideglass_aegis: {
+    id: 'tideglass_aegis',
+    name: 'Tideglass Aegis',
+    uniqueName: 'Tideglass Aegis',
+    uniqueDescription: 'A shield of trapped surf that turns cold into shelter.',
+    isUniqueBase: true,
+    slot: 'offhand',
+    baseLevel: 35,
+    armour: 76,
+    energyShield: 42,
+    implicit: [
+      { id: 'unique_tideglass_armour', type: 'prefix', name: 'Glassbound shell', tier: 0, stat: 'armour', minValue: 24, maxValue: 24, value: 24 },
+      { id: 'unique_tideglass_cold', type: 'suffix', name: 'Tide memory', tier: 0, stat: 'coldResistance', minValue: 18, maxValue: 18, value: 18 },
+    ],
+  },
+  crown_of_first_storm: {
+    id: 'crown_of_first_storm',
+    name: 'Crown of the First Storm',
+    uniqueName: 'Crown of the First Storm',
+    uniqueDescription: 'The first thunder still rings inside its fractured circlet.',
+    isUniqueBase: true,
+    slot: 'helmet',
+    baseLevel: 35,
+    armour: 58,
+    evasion: 72,
+    implicit: [
+      { id: 'unique_crown_accuracy', type: 'prefix', name: 'Storm-sighted', tier: 0, stat: 'accuracy', minValue: 45, maxValue: 45, value: 45 },
+      { id: 'unique_crown_lightning', type: 'suffix', name: 'First thunder', tier: 0, stat: 'lightningResistance', minValue: 18, maxValue: 18, value: 18 },
+    ],
+  },
+  mirewalkers_coil: {
+    id: 'mirewalkers_coil',
+    name: "Mirewalker's Coil",
+    uniqueName: "Mirewalker's Coil",
+    uniqueDescription: 'A living vine that remembers every path through the drowned fen.',
+    isUniqueBase: true,
+    slot: 'boots',
+    baseLevel: 35,
+    evasion: 96,
+    implicit: [
+      { id: 'unique_mirewalkers_evasion', type: 'prefix', name: 'Fenstride', tier: 0, stat: 'increasedEvasionPercent', minValue: 12, maxValue: 12, value: 12 },
+      { id: 'unique_mirewalkers_chaos', type: 'suffix', name: 'Bog-bloom', tier: 0, stat: 'chaosResistance', minValue: 18, maxValue: 18, value: 18 },
+    ],
+  },
+  bloodbound_carapace: {
+    id: 'bloodbound_carapace',
+    name: 'Bloodbound Carapace',
+    uniqueName: 'Bloodbound Carapace',
+    uniqueDescription: 'It hardens around every wound, refusing to let the wearer fall twice.',
+    isUniqueBase: true,
+    slot: 'body',
+    baseLevel: 35,
+    armour: 128,
+    life: 34,
+    implicit: [
+      { id: 'unique_carapace_life', type: 'prefix', name: 'Blood-fed', tier: 0, stat: 'flatLife', minValue: 42, maxValue: 42, value: 42 },
+      { id: 'unique_carapace_max_life', type: 'suffix', name: 'Second skin', tier: 0, stat: 'increasedMaxLifePercent', minValue: 10, maxValue: 10, value: 10 },
+    ],
+  },
+  drowned_kings_coin: {
+    id: 'drowned_kings_coin',
+    name: "Drowned King's Coin",
+    uniqueName: "Drowned King's Coin",
+    uniqueDescription: 'A salt-black coin that always returns to the deepest pocket.',
+    isUniqueBase: true,
+    slot: 'ring',
+    baseLevel: 35,
+    life: 18,
+    energyShield: 16,
+    implicit: [
+      { id: 'unique_coin_gold', type: 'suffix', name: 'Lost fortune', tier: 0, stat: 'goldFindPercent', minValue: 24, maxValue: 24, value: 24 },
+      { id: 'unique_coin_boss', type: 'prefix', name: 'Tide of fate', tier: 0, stat: 'damageVsBossesPercent', minValue: 8, maxValue: 8, value: 8 },
+    ],
+  },
+}
+
 export const STARTER_ITEMS: Record<string, string[]> = {
   brute: ['rusted_axe', 'worn_shield', 'tattered_hood', 'battered_chest', 'fingerless_gloves', 'worn_boots', 'rope_belt', 'seashell_amulet', 'iron_ring'],
   stalker: ['crude_dagger', 'worn_shield', 'tattered_hood', 'battered_chest', 'fingerless_gloves', 'worn_boots', 'rope_belt', 'seashell_amulet', 'iron_ring'],

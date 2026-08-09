@@ -13,11 +13,15 @@ describe('save normalization', () => {
   })
 
   it('falls back to an empty Nexus state when a current save omits it', () => {
-    const loaded = deserializeSave(encode({ saveVersion: SAVE_VERSION, nexus: undefined })) as unknown as {
-      nexus: { maps: unknown[]; activeMapId: string | null; packsCleared: number }
+    const loaded = deserializeSave(encode({
+      saveVersion: SAVE_VERSION,
+      character: createInitialState('warlord').character,
+      nexus: undefined,
+    })) as unknown as {
+      nexus: { maps: unknown[]; activeMapId: string | null; packsCleared: number; completedTierRewards: number[] }
     }
 
-    expect(loaded.nexus).toEqual({ maps: [], activeMapId: null, packsCleared: 0 })
+    expect(loaded.nexus).toEqual({ maps: [], activeMapId: null, packsCleared: 0, completedTierRewards: [] })
   })
 
   it('does not persist runtime-only offline fields', () => {
@@ -41,9 +45,58 @@ describe('save normalization', () => {
     expect(parsed.offlineSummary).toBeUndefined()
   })
 
+  it('migrates a legacy Nexus state without milestone tracking', () => {
+    const legacy = deserializeSave(encode({
+      saveVersion: SAVE_VERSION - 1,
+      character: createInitialState('warlord').character,
+      nexus: { maps: [], activeMapId: null, packsCleared: 2 },
+      currencies: { gold: 10 },
+    }))
+
+    expect(legacy?.nexus).toEqual({ maps: [], activeMapId: null, packsCleared: 2, completedTierRewards: [] })
+    expect(legacy?.currencies.rift_crystal).toBe(0)
+  })
+
+  it('filters invalid gem references and clamps loadout runtime fields in a current save', () => {
+    const base = createInitialState('warlord').character
+    const loaded = deserializeSave(encode({
+      saveVersion: SAVE_VERSION,
+      character: {
+        ...base,
+        supportSlotCount: 99,
+        ownedGems: [
+          { id: 'strike', level: 99, xp: -10 },
+          { id: 'strike', level: 3, xp: 12 },
+          { id: 'not_a_gem', level: 4, xp: 10 },
+          null,
+        ],
+        equippedSkills: [
+          { skillId: 'strike', supportIds: ['added_physical_damage', 'missing_support', 'added_physical_damage'], cooldownRemaining: -4, hitCounter: 2.8 },
+          { skillId: 'missing_skill', supportIds: ['added_physical_damage'], cooldownRemaining: 0, hitCounter: 0 },
+          null,
+          { skillId: 'slash', supportIds: [], cooldownRemaining: 0, hitCounter: 0 },
+          { skillId: 'firebolt', supportIds: [], cooldownRemaining: 0, hitCounter: 0 },
+        ],
+      },
+    }))
+
+    expect(loaded).not.toBeNull()
+    expect(loaded?.character.supportSlotCount).toBe(5)
+    expect(loaded?.character.ownedGems).toEqual([{ id: 'strike', level: 20, xp: 0 }])
+    expect(loaded?.character.equippedSkills).toHaveLength(4)
+    expect(loaded?.character.equippedSkills[0]).toMatchObject({
+      skillId: 'strike',
+      supportIds: ['added_physical_damage'],
+      cooldownRemaining: 0,
+      hitCounter: 2,
+    })
+    expect(loaded?.character.equippedSkills[1]?.skillId).toBe('')
+  })
+
   it('normalizes malformed Nexus data in a current-version save', () => {
     const loaded = deserializeSave(encode({
       saveVersion: SAVE_VERSION,
+      character: createInitialState('warlord').character,
       nexus: {
         maps: [
           null,

@@ -111,16 +111,26 @@ function App() {
   ]
 
   return (
-    <div className="min-h-screen bg-[#0b0c10] text-gray-100 flex flex-col">
-      <header className="bg-[#1f2028] border-b border-[#2e303a] px-6 py-4 flex items-center justify-between">
-        <h1 className="text-2xl font-serif text-[#d4a017]">Rift Idler</h1>
-        <div className="text-sm text-gray-400">M2 — Items & Crafting</div>
+    <div className="min-h-screen bg-[var(--bg-primary)] text-[var(--text-primary)] flex flex-col">
+      <header className="border-b border-[var(--border)] bg-[var(--bg-panel)] px-4 py-4 shadow-[0_12px_30px_rgba(0,0,0,0.18)] sm:px-6">
+        <div className="mx-auto flex w-full max-w-[1440px] items-center justify-between gap-4">
+          <div>
+            <div className="eyebrow text-[var(--accent-crystal)]">Aethelgard // Live Run</div>
+            <h1 className="mt-1 text-2xl font-serif text-[var(--accent-gold)] sm:text-3xl">Rift Idler</h1>
+          </div>
+          <div className="text-right">
+            <div className="eyebrow text-[var(--text-muted)]">Campaign · Act {activeAct}</div>
+            <div className="mt-1 max-w-[16rem] truncate text-sm font-medium text-[var(--text-primary)]">
+              {activeZone?.name ?? 'The Nexus'}
+            </div>
+          </div>
+        </div>
       </header>
 
-      <main className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-4 p-4">
+      <main className="mx-auto flex w-full max-w-[1440px] flex-1 flex-col gap-5 p-4 sm:p-6 lg:grid lg:grid-cols-12">
         {/* Left: Character */}
-        <section className="lg:col-span-3 bg-[#15161d] border border-[#2e303a] rounded-lg p-4 space-y-4">
-          <h2 className="text-lg font-serif text-[#d4a017]">{character.name}</h2>
+        <section className="game-panel lg:col-span-3 p-4 space-y-4">
+          <h2 className="text-lg font-serif text-[var(--accent-gold)]">{character.name}</h2>
           <div className="text-sm text-gray-400">
             {character.ascendancyId
               ? ASCENDANCIES[character.ascendancyId].name.toUpperCase()
@@ -134,9 +144,9 @@ function App() {
               <span>XP</span>
               <span>{character.experience} / {character.experienceToNext}</span>
             </div>
-            <div className="w-full h-2 bg-[#2e303a] rounded">
+            <div className="w-full h-2 bg-[var(--border)] rounded">
               <div
-                className="h-full bg-[#d4a017] rounded"
+                className="h-full bg-[var(--accent-gold)] rounded"
                 style={{ width: `${(character.experience / character.experienceToNext) * 100}%` }}
               />
             </div>
@@ -144,15 +154,15 @@ function App() {
 
           {/* Life */}
           <div className="flex items-center gap-2">
-            <Heart className="w-5 h-5 text-red-500" />
+            <Heart className="w-5 h-5 text-[var(--accent-red)]" />
             <div className="flex-1">
               <div className="flex justify-between text-xs mb-1">
                 <span>Life</span>
                 <span>{character.life} / {character.maxLife}</span>
               </div>
-              <div className="w-full h-3 bg-[#2e303a] rounded">
+              <div className="w-full h-3 bg-[var(--border)] rounded">
                 <div
-                  className="h-full bg-red-600 rounded"
+                  className="h-full bg-[var(--accent-red)] rounded"
                   style={{ width: `${(character.life / character.maxLife) * 100}%` }}
                 />
               </div>
@@ -161,15 +171,15 @@ function App() {
 
           {/* ES */}
           <div className="flex items-center gap-2">
-            <Shield className="w-5 h-5 text-blue-400" />
+            <Shield className="w-5 h-5 text-[var(--accent-blue)]" />
             <div className="flex-1">
               <div className="flex justify-between text-xs mb-1">
                 <span>Energy Shield</span>
                 <span>{character.energyShield} / {character.maxEnergyShield}</span>
               </div>
-              <div className="w-full h-2 bg-[#2e303a] rounded">
+              <div className="w-full h-2 bg-[var(--border)] rounded">
                 <div
-                  className="h-full bg-blue-500 rounded"
+                  className="h-full bg-[var(--accent-blue)] rounded"
                   style={{ width: `${(character.energyShield / Math.max(1, character.maxEnergyShield)) * 100}%` }}
                 />
               </div>
@@ -183,19 +193,19 @@ function App() {
             </div>
           )}
 
-          <div className="text-xs text-gray-400 pt-2 border-t border-[#2e303a] space-y-1">
+          <div className="text-xs text-gray-400 pt-2 border-t border-[var(--border)] space-y-1">
             <div>STR: {character.attributes.strength}</div>
             <div>DEX: {character.attributes.dexterity}</div>
             <div>INT: {character.attributes.intelligence}</div>
           </div>
 
           {/* Trials */}
-          <div className="pt-2 border-t border-[#2e303a] space-y-2">
-            <h4 className="text-xs font-medium text-[#d4a017]">Trials</h4>
+          <div className="pt-2 border-t border-[var(--border)] space-y-2">
+            <h4 className="text-xs font-medium text-[var(--accent-gold)]">Trials</h4>
             {activeTrial && previousZoneId && (
               <button
                 onClick={returnToPreviousZone}
-                className="w-full px-3 py-2 bg-[#1f2028] hover:bg-[#2e303a] border border-gray-500 rounded text-xs text-gray-200"
+                className="w-full px-3 py-2 bg-[var(--bg-elevated)] hover:bg-[var(--border)] border border-gray-500 rounded text-xs text-gray-200"
               >
                 ← Return to Zone
               </button>
@@ -211,7 +221,7 @@ function App() {
                 <button
                   key={trial.id}
                   onClick={() => startTrial(trial.id)}
-                  className="w-full px-3 py-2 bg-[#2e2a1f] hover:bg-[#3e3a2f] border border-[#d4a017] rounded text-xs text-[#d4a017]"
+                  className="w-full px-3 py-2 bg-[var(--accent-gold-muted)] hover:bg-[var(--accent-gold-muted-hover)] border border-[var(--accent-gold)] rounded text-xs text-[var(--accent-gold)]"
                 >
                   Start {trial.name}
                 </button>
@@ -237,14 +247,16 @@ function App() {
           <CombatLog events={combat.events} />
 
           {/* Tabs */}
-          <section className="bg-[#15161d] border border-[#2e303a] rounded-lg p-4 flex flex-col">
-            <div className="flex border-b border-[#2e303a] mb-4">
+          <section className="game-panel flex flex-col p-4">
+            <div className="scrollbar-thin mb-4 flex overflow-x-auto border-b border-[var(--border)]">
               {tabs.map(tab => (
                 <button
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id)}
-                  className={`flex-1 py-2 text-xs font-medium flex flex-col items-center gap-1 ${
-                    activeTab === tab.id ? 'text-[#d4a017] border-b-2 border-[#d4a017]' : 'text-gray-400 hover:text-gray-200'
+                  className={`min-w-[4.75rem] shrink-0 py-2 text-xs font-medium flex flex-col items-center gap-1 transition-colors duration-200 ${
+                    activeTab === tab.id
+                      ? 'border-b-2 border-[var(--accent-gold)] text-[var(--accent-gold)]'
+                      : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'
                   }`}
                 >
                   {tab.icon}
@@ -256,11 +268,11 @@ function App() {
             <div className="flex-1 overflow-y-auto scrollbar-thin">
               {activeTab === 'zone' && (
                 <div className="space-y-4">
-                  <h2 className="text-lg font-serif text-[#d4a017]">Acts</h2>
+                  <h2 className="text-lg font-serif text-[var(--accent-gold)]">Acts</h2>
                   {currentActDone && hasNextAct && (
                     <button
                       onClick={advanceToNextAct}
-                      className="w-full px-3 py-2 bg-[#d4a017] hover:bg-[#b88a14] text-[#0b0c10] rounded text-sm font-medium flex items-center justify-center gap-2"
+                      className="w-full px-3 py-2 bg-[var(--accent-gold)] hover:bg-[var(--accent-gold-bright)] text-[var(--bg-primary)] rounded text-sm font-medium flex items-center justify-center gap-2"
                     >
                       Go to Act {nextAct}
                     </button>
@@ -272,7 +284,7 @@ function App() {
                       return (
                         <div key={act} className="space-y-2">
                           <div className="flex items-center justify-between">
-                            <h3 className="text-sm font-serif text-[#d4a017]">Act {act} — {ACT_NAMES[act] ?? 'Unknown'}</h3>
+                            <h3 className="text-sm font-serif text-[var(--accent-gold)]">Act {act} — {ACT_NAMES[act] ?? 'Unknown'}</h3>
                             {isActLocked && <span className="text-xs text-gray-500 italic">Locked</span>}
                           </div>
                           <div className="space-y-2">
@@ -283,9 +295,9 @@ function App() {
                                 disabled={!zone.unlocked}
                                 className={`w-full text-left px-3 py-2 rounded border text-sm flex items-center justify-between ${
                                   activeZoneId === zone.id
-                                    ? 'border-[#d4a017] bg-[#2e2a1f]'
-                                    : 'border-[#2e303a] bg-[#1f2028]'
-                                } ${!zone.unlocked ? 'opacity-50 cursor-not-allowed' : 'hover:bg-[#2e303a]'}`}
+                                    ? 'border-[var(--accent-gold)] bg-[var(--accent-gold-muted)]'
+                                    : 'border-[var(--border)] bg-[var(--bg-elevated)]'
+                                } ${!zone.unlocked ? 'opacity-50 cursor-not-allowed' : 'hover:bg-[var(--border)]'}`}
                               >
                                 <span className="flex items-center gap-2">
                                   <MapPin className="w-4 h-4" />
@@ -316,11 +328,11 @@ function App() {
 
               {activeTab === 'settings' && (
                 <div className="space-y-4">
-                  <h2 className="text-lg font-serif text-[#d4a017]">Settings</h2>
+                  <h2 className="text-lg font-serif text-[var(--accent-gold)]">Settings</h2>
                   <DevTools />
                   <button
                     onClick={handleExport}
-                    className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-[#2e303a] hover:bg-[#3e404a] rounded text-sm"
+                    className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-[var(--border)] hover:bg-[var(--border-strong)] rounded text-sm"
                   >
                     <Save className="w-4 h-4" /> Export Save
                   </button>
@@ -328,7 +340,7 @@ function App() {
                     <textarea
                       readOnly
                       value={saveString}
-                      className="w-full h-24 bg-[#0b0c10] border border-[#2e303a] rounded p-2 text-xs font-mono break-all"
+                      className="w-full h-24 bg-[var(--bg-primary)] border border-[var(--border)] rounded p-2 text-xs font-mono break-all"
                     />
                   )}
                   <button
@@ -344,7 +356,7 @@ function App() {
         </section>
 
         {/* Right: Character Stats */}
-        <section className="lg:col-span-3">
+        <section className="lg:col-span-3 lg:sticky lg:top-4 lg:self-start">
           <CharacterStats character={character} combat={combat} />
         </section>
       </main>

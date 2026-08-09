@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useGameStore } from '../store/gameStore.ts'
 import { ItemTooltip } from './ItemTooltip.tsx'
 import { CURRENCIES } from '../data/currencies.ts'
-import { isBlankSupport, isGemItem, isNonEquipmentItem, rarityTextClass } from '../types/item.ts'
+import { isBlankSupport, isGemItem, isNonEquipmentItem, rarityTextClass, RARITY_COLORS } from '../types/item.ts'
 import type { Item } from '../types/item.ts'
 import { SUPPORTS } from '../data/supports.ts'
 import { mapAffixDescription } from '../data/mapAffixes.ts'
@@ -22,24 +22,32 @@ export function InventoryPanel() {
   const convertBlankSupport = useGameStore(state => state.convertBlankSupport)
   const ownedGems = useGameStore(state => state.character.ownedGems)
 
-  const [selectedItem, setSelectedItem] = useState<Item | null>(null)
+  const [selectedItemId, setSelectedItemId] = useState<string | null>(null)
+  const selectedItem = selectedItemId
+    ? inventory.items.find(item => item.id === selectedItemId) ?? null
+    : null
   const [selectedSupportId, setSelectedSupportId] = useState('')
   const [hoveredItem, setHoveredItem] = useState<Item | null>(null)
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h2 className="text-lg font-serif text-[#d4a017]">Inventory</h2>
-        <span className="text-xs text-gray-400">{inventory.items.length} / {inventory.maxSize}</span>
+      <div className="flex items-end justify-between gap-3">
+        <div>
+          <h2 className="text-lg font-serif text-[var(--accent-gold)]">Inventory</h2>
+          <p className="mt-1 text-[11px] text-[var(--text-muted)]">A compact 5 × 6 field kit for your next run.</p>
+        </div>
+        <span className="data-value shrink-0 rounded-full border border-[var(--border)] bg-[var(--bg-elevated)] px-2.5 py-1 text-xs text-[var(--text-secondary)]">
+          {inventory.items.length} / {inventory.maxSize}
+        </span>
       </div>
 
-      <div className="flex items-center gap-4 text-xs">
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-lg border border-[var(--border)] bg-[var(--bg-panel)] px-3 py-2 text-xs">
         <label className="flex items-center gap-2 text-gray-300 cursor-pointer">
           <input
             type="checkbox"
             checked={inventory.autoSellNormal}
             onChange={() => toggleAutoSell('normal')}
-            className="accent-[#d4a017]"
+            className="accent-[var(--accent-gold)]"
           />
           Auto-sell Normal
         </label>
@@ -48,23 +56,29 @@ export function InventoryPanel() {
             type="checkbox"
             checked={inventory.autoSellMagic}
             onChange={() => toggleAutoSell('magic')}
-            className="accent-[#d4a017]"
+            className="accent-[var(--accent-gold)]"
           />
           Auto-sell Magic
         </label>
       </div>
 
-      <div className="grid grid-cols-6 gap-2">
+      <div
+        role="grid"
+        aria-label={`Inventory slots, ${inventory.items.length} of ${inventory.maxSize} occupied`}
+        className="grid grid-cols-5 gap-2 sm:gap-2.5"
+      >
         {inventory.items.map(item => (
           <button
             key={item.id}
-            onClick={() => setSelectedItem(item)}
+            onClick={() => setSelectedItemId(item.id)}
             onMouseEnter={() => setHoveredItem(item)}
             onMouseLeave={() => setHoveredItem(null)}
-            className={`relative aspect-square bg-[#1f2028] border rounded p-1 text-xs text-left hover:bg-[#2e303a] transition-colors ${
-              selectedItem?.id === item.id ? 'border-[#d4a017]' : 'border-[#2e303a]'
+            aria-label={`${item.name}, ${item.rarity} ${item.slot}, item level ${item.itemLevel}`}
+            aria-pressed={selectedItem?.id === item.id}
+            className={`group relative aspect-square min-w-0 rounded border bg-[var(--bg-elevated)] p-1 text-left text-xs transition-all hover:-translate-y-0.5 hover:bg-[var(--border)] hover:shadow-[0_6px_16px_rgba(0,0,0,0.2)] ${
+              selectedItem?.id === item.id ? 'border-[var(--accent-gold)] shadow-[0_0_0_1px_rgba(227,183,91,0.2)]' : 'border-[var(--border)]'
             }`}
-            style={selectedItem?.id === item.id ? undefined : { borderColor: 'rgba(46,48,58,1)' }}
+            style={{ borderLeftColor: RARITY_COLORS[item.rarity], borderLeftWidth: '3px' }}
           >
             <div className={`truncate ${rarityTextClass(item.rarity)}`}>{item.name}</div>
             <div className="text-[10px] text-gray-500">iLvl {item.itemLevel}</div>
@@ -76,26 +90,41 @@ export function InventoryPanel() {
           </button>
         ))}
         {Array.from({ length: Math.max(0, inventory.maxSize - inventory.items.length) }).map((_, i) => (
-          <div key={`empty-${i}`} className="aspect-square bg-[#15161d] border border-[#2e303a]/50 rounded" />
+          <div
+            key={`empty-${i}`}
+            role="gridcell"
+            aria-label="Empty inventory slot"
+            className="aspect-square rounded border border-[var(--border)]/60 bg-[var(--bg-secondary)] shadow-[inset_0_2px_8px_rgba(0,0,0,0.28)]"
+          />
         ))}
       </div>
 
+      {inventory.items.length > inventory.maxSize && (
+        <div className="rounded-lg border border-amber-700/50 bg-amber-950/20 px-3 py-2 text-xs text-amber-200">
+          This save has {inventory.items.length - inventory.maxSize} item{inventory.items.length - inventory.maxSize === 1 ? '' : 's'} beyond the 5 × 6 capacity. Existing loot is preserved; clear overflow before collecting more.
+        </div>
+      )}
+
       {selectedItem && (
-        <div className="border border-[#2e303a] rounded p-3 bg-[#15161d]">
+        <div className="game-panel p-3">
+          <div className="mb-3 flex items-center justify-between gap-3">
+            <span className="eyebrow text-[var(--text-muted)]">Selected item</span>
+            <span className={`text-[10px] font-semibold uppercase tracking-wider ${rarityTextClass(selectedItem.rarity)}`}>{selectedItem.rarity}</span>
+          </div>
           <ItemTooltip item={selectedItem} />
           <div className="mt-3 flex flex-wrap gap-2">
             {isNonEquipmentItem(selectedItem) ? (
               isGemItem(selectedItem) ? (
                 <>
                   <button
-                    onClick={() => { claimGemItem(selectedItem.id); setSelectedItem(null) }}
-                    className="px-3 py-1 bg-[#d4a017] text-black rounded text-sm font-medium hover:bg-[#e5b12a]"
+                    onClick={() => { claimGemItem(selectedItem.id); setSelectedItemId(null) }}
+                    className="px-3 py-1 bg-[var(--accent-gold)] text-[var(--bg-primary)] rounded text-sm font-medium hover:bg-[var(--accent-gold-bright)]"
                   >
                     Claim Gem
                   </button>
                   <button
-                    onClick={() => { discardItem(selectedItem.id); setSelectedItem(null) }}
-                    className="px-3 py-1 bg-[#2e303a] text-gray-200 rounded text-sm hover:bg-[#3e404a]"
+                    onClick={() => { discardItem(selectedItem.id); setSelectedItemId(null) }}
+                    className="px-3 py-1 bg-[var(--border)] text-gray-200 rounded text-sm hover:bg-[var(--border-strong)]"
                   >
                     Discard
                   </button>
@@ -105,7 +134,7 @@ export function InventoryPanel() {
                   <select
                     value={selectedSupportId}
                     onChange={event => setSelectedSupportId(event.target.value)}
-                    className="px-2 py-1 bg-[#1f2028] border border-[#2e303a] rounded text-sm text-gray-200"
+                    className="px-2 py-1 bg-[var(--bg-elevated)] border border-[var(--border)] rounded text-sm text-gray-200"
                   >
                     <option value="">Choose support…</option>
                     {Object.values(SUPPORTS)
@@ -114,14 +143,14 @@ export function InventoryPanel() {
                   </select>
                   <button
                     disabled={!selectedSupportId}
-                    onClick={() => { convertBlankSupport(selectedItem.id, selectedSupportId); setSelectedItem(null); setSelectedSupportId('') }}
-                    className="px-3 py-1 bg-[#d4a017] text-black rounded text-sm font-medium hover:bg-[#e5b12a] disabled:opacity-50"
+                    onClick={() => { convertBlankSupport(selectedItem.id, selectedSupportId); setSelectedItemId(null); setSelectedSupportId('') }}
+                    className="px-3 py-1 bg-[var(--accent-gold)] text-[var(--bg-primary)] rounded text-sm font-medium hover:bg-[var(--accent-gold-bright)] disabled:opacity-50"
                   >
                     Convert
                   </button>
                   <button
-                    onClick={() => { discardItem(selectedItem.id); setSelectedItem(null); setSelectedSupportId('') }}
-                    className="px-3 py-1 bg-[#2e303a] text-gray-200 rounded text-sm hover:bg-[#3e404a]"
+                    onClick={() => { discardItem(selectedItem.id); setSelectedItemId(null); setSelectedSupportId('') }}
+                    className="px-3 py-1 bg-[var(--border)] text-gray-200 rounded text-sm hover:bg-[var(--border-strong)]"
                   >
                     Discard
                   </button>
@@ -130,14 +159,14 @@ export function InventoryPanel() {
             ) : (
               <>
                 <button
-                  onClick={() => { equipItem(selectedItem); setSelectedItem(null) }}
-                  className="px-3 py-1 bg-[#d4a017] text-black rounded text-sm font-medium hover:bg-[#e5b12a]"
+                  onClick={() => { equipItem(selectedItem); setSelectedItemId(null) }}
+                  className="px-3 py-1 bg-[var(--accent-gold)] text-[var(--bg-primary)] rounded text-sm font-medium hover:bg-[var(--accent-gold-bright)]"
                 >
                   Equip
                 </button>
                 <button
-                  onClick={() => { sellItem(selectedItem.id); setSelectedItem(null) }}
-                  className="px-3 py-1 bg-[#2e303a] text-gray-200 rounded text-sm hover:bg-[#3e404a]"
+                  onClick={() => { sellItem(selectedItem.id); setSelectedItemId(null) }}
+                  className="px-3 py-1 bg-[var(--border)] text-gray-200 rounded text-sm hover:bg-[var(--border-strong)]"
                 >
                   Sell
                 </button>
@@ -147,7 +176,7 @@ export function InventoryPanel() {
                     key={id}
                     onClick={() => useCurrency(selectedItem.id, id)}
                     disabled={(currencies[id] || 0) <= 0}
-                    className="px-2 py-1 text-xs rounded bg-[#1f2028] border border-[#2e303a] hover:bg-[#2e303a] disabled:opacity-50"
+                    className="px-2 py-1 text-xs rounded bg-[var(--bg-elevated)] border border-[var(--border)] hover:bg-[var(--border)] disabled:opacity-50"
                   >
                     {currency.name} ({currencies[id] || 0})
                   </button>
@@ -160,14 +189,14 @@ export function InventoryPanel() {
 
       {/* Nexus Maps */}
       {nexus.maps.length > 0 && (
-        <div className="border-t border-[#2e303a] pt-4 mt-4">
+        <div className="border-t border-[var(--border)] pt-4 mt-4">
           <div className="mb-3 flex items-start justify-between gap-3">
             <div>
-              <h3 className="text-sm font-medium text-[#d8b8ff]">Nexus Maps</h3>
+              <h3 className="text-sm font-medium text-[var(--accent-crystal)]">Nexus Maps</h3>
               <p className="mt-0.5 text-[11px] text-gray-500">Choose a map to begin an endgame run.</p>
             </div>
             {nexus.activeMapId && (
-              <span className="rounded-full border border-[#b57eff]/30 bg-[#7e14ff]/10 px-2 py-1 text-[10px] uppercase tracking-wider text-[#d8b8ff]">
+              <span className="rounded-full border border-[var(--accent-crystal)]/30 bg-[var(--accent-crystal)]/10 px-2 py-1 text-[10px] uppercase tracking-wider text-[var(--accent-crystal)]">
                 Map in progress
               </span>
             )}
@@ -184,13 +213,13 @@ export function InventoryPanel() {
                   aria-label={`Enter Tier ${map.tier} Nexus map`}
                   className={`group rounded-lg border p-3 text-left transition-all ${
                     canEnter
-                      ? 'border-[#7e14ff]/40 bg-[#1a1525] hover:-translate-y-0.5 hover:border-[#b57eff]/70 hover:bg-[#2a2040] hover:shadow-[0_8px_20px_rgba(126,20,255,0.16)]'
-                      : 'border-[#2e303a] bg-[#15161d] opacity-55'
+                      ? 'border-[var(--accent-crystal)]/35 bg-[var(--bg-elevated)] hover:-translate-y-0.5 hover:border-[var(--accent-crystal)]/70 hover:bg-[var(--border)] hover:shadow-[0_8px_20px_rgba(103,209,227,0.12)]'
+                      : 'border-[var(--border)] bg-[var(--bg-panel)] opacity-55'
                   }`}
                 >
                   <div className="flex items-start justify-between gap-2">
                     <div>
-                      <div className="text-sm font-semibold text-[#d8b8ff]">Tier {map.tier}</div>
+                      <div className="text-sm font-semibold text-[var(--accent-crystal)]">Tier {map.tier}</div>
                       <div className="mt-0.5 text-[10px] text-gray-500">Level {map.monsterLevel} • {packsRequired} packs</div>
                     </div>
                     <div className="text-right text-[10px] text-cyan-200">
@@ -200,12 +229,12 @@ export function InventoryPanel() {
                   </div>
                   <div className="mt-3 space-y-1">
                     {map.affixes.map(affix => (
-                      <div key={`${map.id}-${affix.id}`} className="truncate text-[10px] text-purple-200" title={mapAffixDescription(affix)}>
+                      <div key={`${map.id}-${affix.id}`} className="truncate text-[10px] text-[var(--accent-crystal)]" title={mapAffixDescription(affix)}>
                         {mapAffixDescription(affix)}
                       </div>
                     ))}
                   </div>
-                  <div className={`mt-3 text-[10px] font-medium uppercase tracking-wider ${canEnter ? 'text-[#b57eff] group-hover:text-white' : 'text-gray-600'}`}>
+                  <div className={`mt-3 text-[10px] font-medium uppercase tracking-wider ${canEnter ? 'text-[var(--accent-crystal)] group-hover:text-white' : 'text-gray-600'}`}>
                     {map.currentCharges <= 0 ? 'Depleted' : canEnter ? 'Enter map →' : 'Finish current map first'}
                   </div>
                 </button>

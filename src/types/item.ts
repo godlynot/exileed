@@ -14,27 +14,27 @@ export type ItemSlot =
 export type ItemRarity = 'normal' | 'magic' | 'rare' | 'unique'
 
 export const RARITY_COLORS: Record<ItemRarity, string> = {
-  normal: '#c8c8c8',
-  magic: '#6a8fd8',
-  rare: '#d9c95a',
-  unique: '#c96a2e',
+  normal: '#b7c0cb',
+  magic: '#79a9e8',
+  rare: '#e6c15b',
+  unique: '#e89054',
 }
 
 export function rarityTextClass(rarity: ItemRarity): string {
   switch (rarity) {
-    case 'magic': return 'text-blue-400'
-    case 'rare': return 'text-yellow-400'
-    case 'unique': return 'text-orange-400'
-    default: return 'text-gray-300'
+    case 'magic': return 'text-blue-300'
+    case 'rare': return 'text-[var(--accent-gold)]'
+    case 'unique': return 'text-orange-300'
+    default: return 'text-[var(--text-secondary)]'
   }
 }
 
 export function rarityBorderClass(rarity: ItemRarity): string {
   switch (rarity) {
-    case 'magic': return 'border-blue-500/50'
-    case 'rare': return 'border-yellow-500/50'
-    case 'unique': return 'border-orange-500/50'
-    default: return 'border-gray-600'
+    case 'magic': return 'border-blue-400/60'
+    case 'rare': return 'border-[var(--accent-gold)]/60'
+    case 'unique': return 'border-orange-400/60'
+    default: return 'border-[var(--border-strong)]'
   }
 }
 
@@ -65,8 +65,11 @@ export interface BaseItem {
   energyShield?: number
   // Life / mana
   life?: number
-  // Implicit mods (unique items later)
+  // Implicit mods used by unique bases.
   implicit?: Affix[]
+  isUniqueBase?: boolean
+  uniqueDescription?: string
+  uniqueName?: string
 }
 
 export type ItemKind = 'equipment' | 'blankSupport' | 'skillGem' | 'supportGem'
@@ -92,7 +95,10 @@ export interface Item {
   rarity: ItemRarity
   itemLevel: number
   affixes: Affix[]
-  // Computed from base + affixes
+  // Unique effects are separate from rolled affixes and do not affect rarity bands.
+  implicit?: Affix[]
+  uniqueDescription?: string
+  // Computed from base + affixes + implicit unique effects
   physicalDamageMin: number
   physicalDamageMax: number
   flatLightningDamageMin: number

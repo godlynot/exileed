@@ -14,13 +14,14 @@ import { createMomentumState } from '../systems/momentum.ts'
 import { saveGame, loadGame, exportSave as exportSaveString, importSave } from '../systems/save.ts'
 import { computeOfflineSeconds } from '../systems/offlineProgress.ts'
 import type { OfflineSummary } from '../types/game.ts'
-import { createNexusMap, nexusMapCrystalCost, nexusZoneForMap } from '../systems/nexus.ts'
+import { createNexusMap, nexusMapCrystalCost, nexusTierCompletionRewardForTier, nexusZoneForMap } from '../systems/nexus.ts'
 import { BASE_ITEMS, STARTER_ITEMS } from '../data/items.ts'
 import { SUPPORTS } from '../data/supports.ts'
 import { SKILLS } from '../data/skills.ts'
-import { addProgressionDropsToInventory, createItem, applyOrb, recalculateCharacterFromEquipment } from '../systems/items.ts'
+import { addProgressionDropsToInventory, consumeGeneratedDrops, createItem, applyOrb, recalculateCharacterFromEquipment } from '../systems/items.ts'
 
 const SAVE_INTERVAL_TICKS = TICKS_PER_SECOND * 30
+const INVENTORY_CAPACITY = 30
 
 const STARTER_SKILL_BY_CLASS: Record<ClassId, string> = {
   brute: 'strike',
@@ -138,10 +139,22 @@ function createInitialEquipment(): Equipment {
 function createInitialInventory(): InventoryState {
   return {
     items: [],
-    maxSize: 60,
+    maxSize: INVENTORY_CAPACITY,
     autoSellNormal: true,
     autoSellMagic: true,
     autoSellMaxLevel: 0,
+  }
+}
+
+function normalizeInventory(inventory: InventoryState | undefined): InventoryState {
+  return {
+    ...(inventory ?? createInitialInventory()),
+    // The 5 × 6 inventory is the current capacity. Existing items are kept
+    // intact so an older save can be inspected and cleared safely.
+    maxSize: INVENTORY_CAPACITY,
+    autoSellNormal: inventory?.autoSellNormal ?? true,
+    autoSellMagic: inventory?.autoSellMagic ?? true,
+    autoSellMaxLevel: inventory?.autoSellMaxLevel ?? 0,
   }
 }
 
@@ -166,6 +179,7 @@ function createInitialNexus(): GameState['nexus'] {
     maps: [],
     activeMapId: null,
     packsCleared: 0,
+    completedTierRewards: [],
   }
 }
 
@@ -263,7 +277,7 @@ interface GameActions {
   startGame: (classId: ClassId) => void
   equipSkill: (skillId: string, slotIndex: number) => void
   unequipSkill: (slotIndex: number) => void
-  equipSupport: (supportId: string, slotIndex: number) => void
+  equipSupport: (supportId: string, skillSlotIndex: number, supportSlotIndex?: number) => void
   unequipSupport: (skillSlotIndex: number, supportSlotIndex: number) => void
   exportSave: () => string
   importSave: (data: string) => void
@@ -286,6 +300,7 @@ function getInitialState(): GameState {
       gamePhase: loaded.gamePhase ?? 'class-select',
       tickCounter: loaded.tickCounter ?? 0,
       previousZoneId: loaded.previousZoneId ?? null,
+      inventory: normalizeInventory(loaded.inventory),
       nexus: loaded.nexus && Array.isArray(loaded.nexus.maps)
         ? {
             maps: loaded.nexus.maps,
@@ -293,6 +308,9 @@ function getInitialState(): GameState {
             packsCleared: typeof loaded.nexus.packsCleared === 'number' && Number.isFinite(loaded.nexus.packsCleared)
               ? Math.max(0, Math.floor(loaded.nexus.packsCleared))
               : 0,
+            completedTierRewards: Array.isArray(loaded.nexus.completedTierRewards)
+              ? [...new Set(loaded.nexus.completedTierRewards.filter(tier => typeof tier === 'number' && Number.isFinite(tier)).map(tier => Math.floor(tier)))]
+              : [],
           }
         : createInitialNexus(),
       currencies: { rift_crystal: 0, ...loaded.currencies },
@@ -307,11 +325,72 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
   ...getInitialState(),
 
   tick: () => {
+    let shouldPersistReward = false
     set(state => {
+      // Drop generation is queued by the item system so the store can describe
+      // auto-sold loot without coupling combat to UI formatting. Clear any
+      // drops created by an unrelated helper call before starting this tick.
+      consumeGeneratedDrops()
       const { state: nextState, events } = simulateTick(state)
+      const generatedDrops = consumeGeneratedDrops()
+      const autoSoldEvents = generatedDrops
+        .filter(dropped =>
+          (dropped.rarity === 'normal' && nextState.inventory.autoSellNormal && dropped.itemLevel <= nextState.character.level) ||
+          (dropped.rarity === 'magic' && nextState.inventory.autoSellMagic && dropped.itemLevel <= nextState.character.level),
+        )
+        .filter(dropped => !events.some(event => event.type === 'itemDropped' && event.itemId === dropped.id))
+        .map(dropped => ({
+          id: `loot_autosell_${dropped.id}`,
+          timestamp: Date.now(),
+          type: 'itemDropped' as const,
+          itemId: dropped.id,
+          itemName: dropped.name,
+          slot: dropped.slot,
+          itemLevel: dropped.itemLevel,
+          rarity: dropped.rarity,
+          outcome: 'autoSold' as const,
+          goldValue: Math.max(1, dropped.itemLevel * 2),
+        }))
+      const tickEvents = [...events, ...autoSoldEvents].map(event => {
+        if (event.type !== 'itemDropped' || event.itemName) return event
+        const dropped = nextState.inventory.items.find(item => item.id === event.itemId)
+        return dropped
+          ? { ...event, itemName: dropped.name, slot: dropped.slot, itemLevel: dropped.itemLevel, outcome: 'stored' as const }
+          : event
+      })
+      const previousRewards = new Set(state.nexus.completedTierRewards ?? [])
+      const newlyCompletedTiers = (nextState.nexus.completedTierRewards ?? []).filter(tier => !previousRewards.has(tier))
+      if (newlyCompletedTiers.length > 0) {
+        let rewardTotal = 0
+        for (const tier of newlyCompletedTiers) {
+          const amount = nexusTierCompletionRewardForTier(tier)
+          if (amount <= 0) continue
+          rewardTotal += amount
+          tickEvents.push({
+            id: `nexus_reward_${nextState.tickCounter}_${tier}`,
+            timestamp: Date.now(),
+            type: 'nexusTierCompleted',
+            tier,
+            amount,
+          })
+        }
+        if (rewardTotal > 0) {
+          nextState.currencies = {
+            ...nextState.currencies,
+            rift_crystal: (nextState.currencies.rift_crystal || 0) + rewardTotal,
+          }
+          tickEvents.push({
+            id: `rift_crystal_reward_${nextState.tickCounter}`,
+            timestamp: Date.now(),
+            type: 'riftCrystalGained',
+            amount: rewardTotal,
+          })
+          shouldPersistReward = true
+        }
+      }
 
       // Rolling combat event buffer for live UI (last 50 events)
-      nextState.combat.events = [...state.combat.events, ...events].slice(-50)
+      nextState.combat.events = [...state.combat.events, ...tickEvents].slice(-50)
 
       const zone = nextState.zones.find(candidate => candidate.id === nextState.activeZoneId)
       const nexusMap = nextState.nexus.activeMapId
@@ -337,7 +416,11 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
           timestamp: Date.now(),
           type: 'itemDropped' as const,
           itemId: dropped.id,
+          itemName: dropped.name,
+          slot: dropped.slot,
+          itemLevel: dropped.itemLevel,
           rarity: dropped.rarity,
+          outcome: 'stored' as const,
         }))
         nextState.combat.events = [...nextState.combat.events, ...progressionEvents].slice(-50)
       }
@@ -356,6 +439,7 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
 
       return { ...nextState, tickCounter: nextState.tickCounter + 1 }
     })
+    if (shouldPersistReward) saveGame(get())
   },
 
   craftNexusMap: (tier: number) => {
@@ -579,7 +663,7 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
   importSave: (data: string) => {
     const loaded = importSave(data)
     if (loaded) {
-      set(loaded)
+      set({ ...loaded, inventory: normalizeInventory(loaded.inventory) })
     }
   },
 
@@ -627,7 +711,8 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
   selectAscendancy: (ascendancyId: string) => {
     set(state => {
       const ascendancy = ASCENDANCIES[ascendancyId]
-      const freeNodes = ascendancy?.nodes.filter(n => n.free) ?? []
+      if (!ascendancy) return state
+      const freeNodes = ascendancy.nodes.filter(n => n.free)
       const nodesToAllocate: Set<string> = new Set()
       for (const free of freeNodes) {
         nodesToAllocate.add(free.id)
@@ -666,6 +751,10 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
 
   setAscendancyChoice: (nodeId: string, choiceId: string) => {
     set(state => {
+      if (!state.character.ascendancyId) return state
+      const ascendancy = ASCENDANCIES[state.character.ascendancyId]
+      const node = ascendancy?.nodes.find(candidate => candidate.id === nodeId)
+      if (!node?.choices?.some(choice => choice.id === choiceId)) return state
       const baseChar = { ...state.character, keystoneChoices: { ...state.character.keystoneChoices, [nodeId]: choiceId } }
       const character = recalcCharacter(state, baseChar)
       return { ...state, character }
@@ -675,7 +764,7 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
   equipSkill: (skillId: string, slotIndex: number) => {
     set(state => {
       const equippedSkills = [...state.character.equippedSkills]
-      if (slotIndex < 0 || slotIndex >= 4) return state
+      if (!Number.isInteger(slotIndex) || slotIndex < 0 || slotIndex >= 4) return state
       if (!SKILLS[skillId] || !state.character.ownedGems.some(gem => gem.id === skillId)) return state
       equippedSkills[slotIndex] = { skillId, supportIds: [], cooldownRemaining: 0, hitCounter: 0 }
       const character = recalcCharacter(state, { ...state.character, equippedSkills })
@@ -686,25 +775,39 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
   unequipSkill: (slotIndex: number) => {
     set(state => {
       const equippedSkills = [...state.character.equippedSkills]
-      if (slotIndex < 0 || slotIndex >= 4) return state
+      if (!Number.isInteger(slotIndex) || slotIndex < 0 || slotIndex >= 4) return state
+      if (!equippedSkills[slotIndex]?.skillId) return state
       equippedSkills[slotIndex] = { skillId: '', supportIds: [], cooldownRemaining: 0, hitCounter: 0 }
       const character = recalcCharacter(state, { ...state.character, equippedSkills })
       return { ...state, character }
     })
   },
 
-  equipSupport: (supportId: string, skillSlotIndex: number) => {
+  equipSupport: (supportId: string, skillSlotIndex: number, supportSlotIndex?: number) => {
     set(state => {
       const equippedSkills = [...state.character.equippedSkills]
+      if (!Number.isInteger(skillSlotIndex) || skillSlotIndex < 0 || skillSlotIndex >= 4) return state
+      if (supportSlotIndex !== undefined && (!Number.isInteger(supportSlotIndex) || supportSlotIndex < 0)) return state
       const skill = equippedSkills[skillSlotIndex]
       const skillData = skill ? SKILLS[skill.skillId] : undefined
       const support = SUPPORTS[supportId]
       if (!skill || !skillData || !support) return state
       if (!state.character.ownedGems.some(gem => gem.id === supportId)) return state
       if (!support.allowedTags.some(tag => skillData.tags.includes(tag))) return state
-      if (skill.supportIds.length >= state.character.supportSlotCount) return state
+
+      // A picker opened from an occupied slot replaces that support. Clicking
+      // any empty slot appends to the first open position so the compact saved
+      // array cannot strand a support behind an earlier empty slot.
+      const requestedIndex = supportSlotIndex ?? skill.supportIds.length
+      if (requestedIndex < 0 || requestedIndex >= state.character.supportSlotCount) return state
       if (skill.supportIds.includes(supportId)) return state
-      equippedSkills[skillSlotIndex] = { ...skill, supportIds: [...skill.supportIds, supportId] }
+
+      const targetIndex = requestedIndex < skill.supportIds.length
+        ? requestedIndex
+        : skill.supportIds.length
+      const supportIds = [...skill.supportIds]
+      supportIds[targetIndex] = supportId
+      equippedSkills[skillSlotIndex] = { ...skill, supportIds }
       const character = recalcCharacter(state, { ...state.character, equippedSkills })
       return { ...state, character }
     })
@@ -713,8 +816,10 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
   unequipSupport: (skillSlotIndex: number, supportSlotIndex: number) => {
     set(state => {
       const equippedSkills = [...state.character.equippedSkills]
+      if (!Number.isInteger(skillSlotIndex) || skillSlotIndex < 0 || skillSlotIndex >= 4) return state
+      if (!Number.isInteger(supportSlotIndex) || supportSlotIndex < 0) return state
       const skill = equippedSkills[skillSlotIndex]
-      if (!skill) return state
+      if (!skill || supportSlotIndex >= skill.supportIds.length) return state
       const supportIds = [...skill.supportIds]
       supportIds.splice(supportSlotIndex, 1)
       equippedSkills[skillSlotIndex] = { ...skill, supportIds }

@@ -6,7 +6,7 @@ The authoritative source for all tuning constants is `src/data/balance.ts`. This
 
 - **Tick rate:** 400 ms (2.5 ticks per second).
 - **Autosave:** Every 30 seconds (random chance per tick).
-- **Offline progress:** Constants exist (`OFFLINE_PROGRESS_MAX_HOURS`, `OFFLINE_PROGRESS_CHUNK_HOURS`) but the loading-overlay simulation is not yet wired to `loadGame()`.
+- **Offline progress:** On boot, the loading overlay simulates away-time through the real combat loop, capped at 8 hours and chunked into hourly work before the result is claimed.
 
 ## Character Progression
 
@@ -41,6 +41,13 @@ levelBonus = (level - 1) * 6  // for both Life and ES
 - `Orb of Genesis` and `Orb of Entropy` use the Rare 4–6 range.
 - `Orb of Sovereignty` fills a Magic item into a valid Rare 4–6 result; `Orb of Triumph` adds one affix while respecting the six-affix and 3/3 prefix/suffix caps.
 - `Orb of the Void` can demote a minimum-count item and removes extra affixes only when necessary to skip the intentional 3-affix gap.
+
+### Hand-designed uniques
+
+- The v1 content slice contains six unique equipment bases.
+- Unique items have no rolled affixes; their fixed effects are stored as separate implicit mods and are displayed in the item tooltip.
+- Named-elite `uniqueChance` rolls draw only from the six unique bases and are never auto-sold by normal/magic filters.
+- Drop frequency and power remain a live tuning pass after progression review; no unique is part of starter equipment.
 
 ## Damage
 
@@ -162,6 +169,19 @@ These bonuses stack with the existing zone-level drop tables in `src/systems/ite
 - Two auras can be active at once.
 - Each aura applies at its normal (non-Unwavering) strength.
 - Special effects are disabled for both auras.
+
+## Nexus Stage 3 Milestones
+
+The first completed map at each milestone tier grants a one-time Rift Crystal bonus. Repeat clears of the same tier remain useful for ordinary map sustain but do not repeat the milestone payout.
+
+| Completed tier | First-clear reward |
+|---:|---:|
+| 5 | +5 Rift Crystals |
+| 10 | +10 Rift Crystals |
+| 15 | +15 Rift Crystals |
+| 16 | +16 Rift Crystals |
+
+Claimed milestone tiers are saved in `NexusState.completedTierRewards` and malformed or legacy saves normalize the list to an empty array.
 
 ## Zones
 

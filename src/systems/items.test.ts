@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, spyOn } from 'bun:test'
 import { DEFENSIVE_GEAR_SCALING_EXPONENT, GEMS, monsterScalingMultiplier } from '../data/balance.ts'
-import { BASE_ITEMS } from '../data/items.ts'
+import { BASE_ITEMS, UNIQUE_ITEMS } from '../data/items.ts'
 import { SKILLS } from '../data/skills.ts'
 import { SUPPORTS } from '../data/supports.ts'
 import {
@@ -14,6 +14,9 @@ import {
   createItem,
   diagnoseItems,
   recalculateItem,
+  calculateEquipmentBonus,
+  consumeGeneratedDrops,
+  dropItem,
   RARITY_RANGE,
   MAX_PREFIXES,
   MAX_SUFFIXES,
@@ -92,6 +95,84 @@ describe('progression loot', () => {
 
     expect(gemIds.length).toBeGreaterThan(0)
     expect(new Set(gemIds).size).toBe(gemIds.length)
+  })
+})
+
+describe('unique item bases', () => {
+  it('defines six unique items with fixed effects and no rolled affixes', () => {
+    expect(Object.keys(UNIQUE_ITEMS)).toHaveLength(6)
+
+    for (const [baseId, base] of Object.entries(UNIQUE_ITEMS)) {
+      const item = createItem(baseId, 50, 'unique')
+      expect(item.rarity).toBe('unique')
+      expect(item.baseId).toBe(baseId)
+      expect(item.name).toBe(base.uniqueName ?? base.name)
+      expect(item.affixes).toHaveLength(0)
+      expect(item.implicit?.length).toBeGreaterThan(0)
+      expect(item.uniqueDescription).toBe(base.uniqueDescription)
+    }
+  })
+
+  it('routes chaos resistance affixes into character equipment bonuses', () => {
+    const base = createItem('battered_chest', 50, 'normal')
+    const equipment = {
+      weapon: null,
+      offhand: null,
+      helmet: { ...base, affixes: [{
+        id: 'chaos_resistance_t1',
+        type: 'suffix' as const,
+        name: 'of the Void',
+        tier: 1,
+        stat: 'chaosResistance',
+        minValue: 42,
+        maxValue: 56,
+        value: 50,
+      }] },
+      body: null,
+      gloves: null,
+      boots: null,
+      belt: null,
+      amulet: null,
+      ring1: null,
+      ring2: null,
+    }
+
+    const bonus = calculateEquipmentBonus(equipment)
+
+    expect(bonus.resistances.chaos).toBeCloseTo(0.5)
+  })
+
+  it('routes unique utility effects into character equipment bonuses', () => {
+    const equipment = {
+      weapon: null,
+      offhand: createItem('tideglass_aegis', 50, 'unique'),
+      helmet: createItem('crown_of_first_storm', 50, 'unique'),
+      body: createItem('bloodbound_carapace', 50, 'unique'),
+      gloves: null,
+      boots: createItem('mirewalkers_coil', 50, 'unique'),
+      belt: null,
+      amulet: null,
+      ring1: createItem('drowned_kings_coin', 50, 'unique'),
+      ring2: null,
+    }
+    const bonus = calculateEquipmentBonus(equipment)
+
+    expect(bonus.resistances.cold).toBeCloseTo(0.18)
+    expect(bonus.resistances.lightning).toBeCloseTo(0.18)
+    expect(bonus.resistances.chaos).toBeCloseTo(0.18)
+    expect(bonus.accuracy).toBe(45)
+    expect(bonus.increasedEvasionPercent).toBe(12)
+    expect(bonus.increasedMaxLifePercent).toBe(10)
+    expect(bonus.damageVsBossesPercent).toBe(8)
+    expect(bonus.goldFindPercent).toBe(24)
+  })
+
+  it('selects only the hand-designed pool for a forced unique drop', () => {
+    const dropped = dropItem(50, { forceRarity: 'unique' })
+    expect(dropped?.rarity).toBe('unique')
+    expect(dropped && UNIQUE_ITEMS[dropped.baseId]).toBeDefined()
+    expect(dropped?.implicit?.length).toBeGreaterThan(0)
+    consumeGeneratedDrops()
   })
 })
 

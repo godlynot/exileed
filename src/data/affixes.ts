@@ -187,6 +187,13 @@ export const SUFFIXES: AffixDefinition[] = [
     { level: 48, min: 30, max: 42 },
     { level: 72, min: 42, max: 56 },
   ]),
+  makeAffix('chaos_resistance', 'suffix', 'chaosResistance', 'of the Void', ['helmet', 'body', 'gloves', 'boots', 'belt', 'amulet', 'ring', 'offhand'], [
+    { level: 1, min: 5, max: 10 },
+    { level: 12, min: 10, max: 20 },
+    { level: 28, min: 20, max: 30 },
+    { level: 48, min: 30, max: 42 },
+    { level: 72, min: 42, max: 56 },
+  ]),
   // Attribute suffixes
   makeAffix('dexterity', 'suffix', 'dexterity', 'of the Wind', ['helmet', 'body', 'gloves', 'boots', 'belt', 'amulet', 'ring'], [
     { level: 1, min: 5, max: 10 },

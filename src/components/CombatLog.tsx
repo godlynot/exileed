@@ -1,5 +1,8 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import type { CombatEvent } from '../types/game.ts'
+import type { Item } from '../types/item.ts'
+import { rarityTextClass } from '../types/item.ts'
+import { useGameStore } from '../store/gameStore.ts'
 import { ScrollText, ChevronDown, ChevronUp } from 'lucide-react'
 
 interface CombatLogProps {
@@ -7,7 +10,7 @@ interface CombatLogProps {
   maxEntries?: number
 }
 
-function formatEvent(event: CombatEvent): { text: string; color: string } {
+function formatEvent(event: CombatEvent, item?: Pick<Item, 'name' | 'slot'>): { text: string; color: string } {
   switch (event.type) {
     case 'monsterSpawned': {
       const rarityLabel = event.rarity === 'rare' ? 'Rare' : event.rarity === 'magic' ? 'Magic' : ''
@@ -42,8 +45,20 @@ function formatEvent(event: CombatEvent): { text: string; color: string } {
       return { text: `+${event.amount} XP`, color: 'text-blue-400' }
     case 'levelUp':
       return { text: `Level up! You are now level ${event.newLevel}`, color: 'text-green-400' }
-    case 'itemDropped':
-      return { text: `Item dropped: ${event.rarity}`, color: 'text-[#d4a017]' }
+    case 'itemDropped': {
+      const itemName = event.itemName ?? item?.name ?? `${event.rarity} item`
+      const slot = event.slot ?? item?.slot
+      if (event.outcome === 'autoSold') {
+        return {
+          text: `Auto-sold ${itemName}${event.goldValue ? ` (+${event.goldValue} gold)` : ''}`,
+          color: 'text-[var(--accent-gold-bright)]',
+        }
+      }
+      return {
+        text: `Found ${itemName}${slot ? ` (${event.rarity}, ${slot})` : ` (${event.rarity})`}`,
+        color: rarityTextClass(event.rarity),
+      }
+    }
     case 'zoneProgress':
       return { text: `Zone progress: ${event.current.toFixed(1)}%`, color: 'text-gray-400' }
     case 'ailmentApplied':
@@ -69,7 +84,9 @@ function formatEvent(event: CombatEvent): { text: string; color: string } {
     case 'riftCrystalGained':
       return { text: `+${event.amount} Rift Crystal${event.amount === 1 ? '' : 's'}`, color: 'text-cyan-300' }
     case 'nexusMapCompleted':
-      return { text: 'Nexus map completed', color: 'text-[#b57eff]' }
+      return { text: 'Nexus map completed', color: 'text-[var(--accent-crystal)]' }
+    case 'nexusTierCompleted':
+      return { text: `Tier ${event.tier} milestone reached: +${event.amount} Rift Crystals`, color: 'text-[var(--accent-gold)]' }
     case 'bandHit':
       return { text: `${event.skillName} hits ${event.targetCount} targets`, color: 'text-cyan-400' }
     default:
@@ -79,31 +96,40 @@ function formatEvent(event: CombatEvent): { text: string; color: string } {
 
 export function CombatLog({ events, maxEntries = 50 }: CombatLogProps) {
   const [isOpen, setIsOpen] = useState(false)
+  const inventoryItems = useGameStore(state => state.inventory.items)
+  const itemById = useMemo(
+    () => new Map(inventoryItems.map(item => [item.id, item])),
+    [inventoryItems],
+  )
   const displayEvents = events.slice(-maxEntries).reverse()
 
   return (
-    <div className="bg-[#15161d] border border-[#2e303a] rounded-lg overflow-hidden">
+    <div className="game-panel overflow-hidden rounded-xl">
       <button
+        type="button"
         onClick={() => setIsOpen(v => !v)}
-        className="w-full flex items-center justify-between px-4 py-2 bg-[#1f2028] hover:bg-[#2a2b35] transition-colors"
+        aria-expanded={isOpen}
+        aria-controls="combat-log-entries"
+        className="flex w-full items-center justify-between bg-[var(--bg-elevated)] px-4 py-2 transition-colors hover:bg-[var(--border)]"
       >
-        <div className="flex items-center gap-2 text-sm font-medium text-[#d4a017]">
-          <ScrollText className="w-4 h-4" />
+        <div className="flex items-center gap-2 text-sm font-medium text-[var(--accent-gold)]">
+          <ScrollText className="h-4 w-4" />
           <span>Combat Log</span>
-          <span className="text-xs text-gray-500">({events.length})</span>
+          <span className="text-xs text-[var(--text-muted)]">({events.length})</span>
         </div>
-        {isOpen ? <ChevronUp className="w-4 h-4 text-gray-400" /> : <ChevronDown className="w-4 h-4 text-gray-400" />}
+        {isOpen ? <ChevronUp className="h-4 w-4 text-gray-400" /> : <ChevronDown className="h-4 w-4 text-gray-400" />}
       </button>
 
       {isOpen && (
-        <div className="max-h-64 overflow-y-auto p-2 space-y-1 scrollbar-thin">
+        <div id="combat-log-entries" className="max-h-64 space-y-1 overflow-y-auto p-2 scrollbar-thin">
           {displayEvents.length === 0 ? (
-            <div className="text-xs text-gray-500 italic px-2 py-1">No combat events yet.</div>
+            <div className="px-2 py-1 text-xs italic text-[var(--text-muted)]">No combat events yet.</div>
           ) : (
             displayEvents.map(event => {
-              const { text, color } = formatEvent(event)
+              const item = event.type === 'itemDropped' ? itemById.get(event.itemId) : undefined
+              const { text, color } = formatEvent(event, item)
               return (
-                <div key={event.id} className="text-xs px-2 py-0.5 border-l-2 border-[#2e303a] hover:bg-[#1f2028]">
+                <div key={event.id} className="border-l-2 border-[var(--border)] px-2 py-0.5 text-xs hover:bg-[var(--bg-elevated)]">
                   <span className={color}>{text}</span>
                 </div>
               )

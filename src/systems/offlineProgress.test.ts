@@ -2,6 +2,7 @@ import { describe, it, expect } from 'bun:test'
 import { computeOfflineSeconds, simulateOfflineProgress } from './offlineProgress.ts'
 import { createInitialState } from '../store/gameStore.ts'
 import { OFFLINE_PROGRESS_MAX_HOURS, OFFLINE_PROGRESS_MIN_SECONDS } from '../data/balance.ts'
+import { consumeGeneratedDrops } from './items.ts'
 
 describe('computeOfflineSeconds', () => {
   const now = 1_800_000_000_000
@@ -54,6 +55,17 @@ describe('simulateOfflineProgress', () => {
     expect(result.summary.kills).toBeGreaterThan(0)
     expect(result.summary.goldGained).toBeGreaterThanOrEqual(0)
     expect(result.summary.xpGained).toBeGreaterThanOrEqual(0)
+  })
+
+  it('does not retain equipment drops in the live loot queue', async () => {
+    const state = createInitialState('warlord')
+    state.gamePhase = 'playing'
+    consumeGeneratedDrops()
+
+    const result = await simulateOfflineProgress(state, 3600)
+
+    expect(result.summary.kills).toBeGreaterThan(0)
+    expect(consumeGeneratedDrops()).toHaveLength(0)
   })
 
   it('reports chunk progress through the callback', async () => {

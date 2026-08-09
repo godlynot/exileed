@@ -1,4 +1,4 @@
-import type { Equipment, InventoryState, Item, ItemRarity } from './item.ts'
+import type { Equipment, InventoryState, Item, ItemRarity, ItemSlot } from './item.ts'
 
 export interface Attributes {
   strength: number
@@ -153,7 +153,7 @@ export interface Character {
   // Skills / supports (save data)
   equippedSkills: EquippedSkill[]
   ownedGems: GemProgress[]
-  // Support slot count grows with campaign milestones (2 -> 3 at Act 3 -> 4 at Act 6 -> 5 at Act 8)
+  // Support slot count grows with campaign milestones (2 -> 3 at Act 3 -> 4 at Act 6 -> 5 at Act 9)
   supportSlotCount: number
   // Ascendancy choice-keystone selections (node id -> choice id)
   keystoneChoices: Record<string, string>
@@ -281,6 +281,8 @@ export interface NexusState {
   maps: NexusMap[]
   activeMapId: string | null
   packsCleared: number
+  // One-time Stage 3 milestone rewards already granted, stored by tier.
+  completedTierRewards: number[]
 }
 
 export type DamageType = 'physical' | 'lightning' | 'fire' | 'cold' | 'chaos'
@@ -345,9 +347,21 @@ export type CombatEvent =
   | { id: string; timestamp: number; type: 'hitAvoided'; source: 'player' | 'monster'; targetId: string; reason: 'evaded' | 'missed' }
   | { id: string; timestamp: number; type: 'monsterDied'; monsterId: string; monsterType: string }
   | { id: string; timestamp: number; type: 'playerDied' }
-  | { id: string; timestamp: number; type: 'itemDropped'; itemId: string; rarity: ItemRarity }
+  | {
+      id: string
+      timestamp: number
+      type: 'itemDropped'
+      itemId: string
+      itemName?: string
+      slot?: ItemSlot
+      itemLevel?: number
+      rarity: ItemRarity
+      outcome?: 'stored' | 'autoSold'
+      goldValue?: number
+    }
   | { id: string; timestamp: number; type: 'riftCrystalGained'; amount: number }
   | { id: string; timestamp: number; type: 'nexusMapCompleted' }
+  | { id: string; timestamp: number; type: 'nexusTierCompleted'; tier: number; amount: number }
   | { id: string; timestamp: number; type: 'xpGained'; amount: number }
   | { id: string; timestamp: number; type: 'levelUp'; newLevel: number }
   | { id: string; timestamp: number; type: 'zoneProgress'; current: number; total: number }

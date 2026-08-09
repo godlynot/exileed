@@ -76,7 +76,7 @@ const PackMonsterItem = memo(function PackMonsterItem({ member, index, isFront, 
       animate={{ opacity: 1, x: 0 }}
       exit={{ opacity: 0, scale: 0.6 }}
       transition={{ duration: 0.35 }}
-      className="relative flex flex-col items-center w-full"
+      className="relative flex w-full flex-col items-center"
     >
       {/* Active target pulse ring */}
       {isFront && (
@@ -84,10 +84,10 @@ const PackMonsterItem = memo(function PackMonsterItem({ member, index, isFront, 
       )}
 
       <div
-        className={`relative flex items-center justify-center rounded-full border-2 bg-[#15161d] ${
+        className={`relative flex items-center justify-center rounded-full border-2 bg-[var(--bg-elevated)] ${
           compact ? 'w-9 h-9' : 'w-12 h-12'
         } ${
-          isFront ? 'border-white shadow-[0_0_12px_rgba(255,255,255,0.6)]' : 'border-[#3f414d]'
+          isFront ? 'border-[var(--accent-crystal)] shadow-[0_0_12px_rgba(103,209,227,0.45)]' : 'border-[var(--border-strong)]'
         }`}
       >
         <motion.div
@@ -106,8 +106,8 @@ const PackMonsterItem = memo(function PackMonsterItem({ member, index, isFront, 
       </div>
 
       {/* HP bar with its own clear row */}
-      <div className="w-full mt-2">
-        <div className="w-full h-1.5 bg-[#0b0c10] rounded-full overflow-hidden border border-[#2e303a]">
+      <div className="mt-2 w-full">
+        <div className="h-1.5 w-full overflow-hidden rounded-full border border-[var(--border)] bg-[var(--bg-primary)]">
           <motion.div
             className="h-full bg-gradient-to-r from-red-700 to-red-500"
             animate={{ width: `${hpPercent}%` }}
@@ -126,7 +126,7 @@ const PackMonsterItem = memo(function PackMonsterItem({ member, index, isFront, 
       {/* Rarity label on its own row */}
       <div
         className={`text-[9px] uppercase tracking-wider leading-none h-3 truncate w-full text-center ${
-          isElite ? 'text-orange-400 font-semibold' : 'text-gray-500'
+          isElite ? 'font-semibold text-orange-300' : 'text-[var(--text-muted)]'
         }`}
       >
         {isElite ? 'Elite' : monster.rarity === 'normal' ? 'Normal' : monster.rarity}
@@ -201,9 +201,9 @@ export function PackLane({ character, currentPack }: PackLaneProps) {
   const esPercent = Math.max(0, (character.energyShield / Math.max(1, character.maxEnergyShield)) * 100)
 
   return (
-    <div className="rounded-xl border border-[#2e303a] bg-[#0b0c10]/90 overflow-hidden">
+    <div className="game-panel overflow-hidden">
       {/* Header: player stats — separated vertically from the lane */}
-      <div className="flex items-center gap-3 px-4 py-2 border-b border-[#2e303a] bg-[#111318]/80">
+      <div className="flex items-center gap-3 border-b border-[var(--border)] bg-[var(--bg-secondary)]/80 px-4 py-2">
         <div className="flex items-center gap-2 shrink-0">
           <span className="text-2xl">{classIcon(character.classId)}</span>
           <div>
@@ -213,7 +213,7 @@ export function PackLane({ character, currentPack }: PackLaneProps) {
         </div>
 
         <div className="flex-1 max-w-xs space-y-1">
-          <div className="relative h-3 bg-[#0b0c10] rounded-full overflow-hidden border border-[#2e303a]">
+          <div className="relative h-3 overflow-hidden rounded-full border border-[var(--border)] bg-[var(--bg-primary)]">
             <motion.div
               className="absolute inset-y-0 left-0 bg-gradient-to-r from-red-700 to-red-500"
               animate={{ width: `${lifePercent}%` }}
@@ -226,7 +226,7 @@ export function PackLane({ character, currentPack }: PackLaneProps) {
             </div>
           </div>
           {character.maxEnergyShield > 0 && (
-            <div className="relative h-1.5 bg-[#0b0c10] rounded-full overflow-hidden border border-[#2e303a]">
+            <div className="relative h-1.5 overflow-hidden rounded-full border border-[var(--border)] bg-[var(--bg-primary)]">
               <motion.div
                 className="absolute inset-y-0 left-0 bg-gradient-to-r from-blue-600 to-blue-400"
                 animate={{ width: `${esPercent}%` }}
@@ -246,14 +246,14 @@ export function PackLane({ character, currentPack }: PackLaneProps) {
       {/* Lane */}
       <div className="relative w-full h-44">
         {/* Lane track — flows from the pack on the right toward the player on the left */}
-        <div className="absolute top-1/2 left-0 right-0 h-1 bg-gradient-to-r from-[#d4a017]/40 via-[#d4a017]/20 to-transparent -translate-y-1/2" />
+        <div className="absolute top-1/2 left-0 right-0 h-1 bg-gradient-to-r from-[var(--accent-gold)]/40 via-[var(--accent-gold)]/20 to-transparent -translate-y-1/2" />
 
         {/* Ground marks */}
-        <div className="absolute top-1/2 left-0 right-0 h-px bg-[#d4a017]/10 -translate-y-1/2" />
+        <div className="absolute top-1/2 left-0 right-0 h-px bg-[var(--accent-gold)]/10 -translate-y-1/2" />
         {[...Array(8)].map((_, i) => (
           <div
             key={i}
-            className="absolute top-1/2 w-2 h-2 bg-[#d4a017]/20 rounded-full -translate-y-1/2"
+            className="absolute top-1/2 w-2 h-2 bg-[var(--accent-gold)]/20 rounded-full -translate-y-1/2"
             style={{ left: `${8 + i * 10}%` }}
           />
         ))}
@@ -303,12 +303,12 @@ export function PackLane({ character, currentPack }: PackLaneProps) {
       </div>
 
       {/* Band legend */}
-      <div className="px-4 py-1.5 border-t border-[#2e303a] bg-[#111318]/60 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[9px] text-gray-500">
-        <span className="font-semibold text-gray-400">Range bands:</span>
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 border-t border-[var(--border)] bg-[var(--bg-secondary)]/60 px-4 py-1.5 text-[9px] text-[var(--text-muted)]">
+        <span className="font-semibold text-[var(--text-secondary)]">Range bands:</span>
         <span className="text-red-400/80">Melee = front only</span>
         <span className="text-amber-400/80">Near = front 2</span>
         <span className="text-blue-400/80">Far = front 3</span>
-        <span className="text-purple-400/80">AoE = whole pack</span>
+        <span className="text-[var(--accent-crystal)]/80">AoE = whole pack</span>
       </div>
     </div>
   )

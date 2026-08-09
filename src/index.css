@@ -1,44 +1,113 @@
 @import "tailwindcss";
 
 :root {
-  --bg-primary: #0b0c10;
-  --bg-secondary: #15161d;
-  --bg-panel: #1f2028;
-  --border: #2e303a;
-  --text-primary: #e5e4e7;
-  --text-secondary: #9ca3af;
-  --accent-gold: #d4a017;
-  --accent-red: #c0392b;
-  --accent-green: #27ae60;
-  --accent-blue: #3498db;
-  --font-serif: 'Cinzel', Georgia, serif;
-  --font-sans: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --bg-primary: #090b0f;
+  --bg-secondary: #0f1319;
+  --bg-panel: #151a22;
+  --bg-elevated: #1c232d;
+  --border: #2a3440;
+  --border-strong: #3a4756;
+  --text-primary: #eef2f5;
+  --text-secondary: #a8b3c0;
+  --text-muted: #6d7886;
+  --accent-gold: #e3b75b;
+  --accent-gold-bright: #f4cd7a;
+  --accent-gold-dim: #7c5e28;
+  --accent-gold-muted: #262015;
+  --accent-gold-muted-hover: #352c1b;
+  --accent-crystal: #67d1e3;
+  --accent-red: #e87373;
+  --accent-green: #75c99b;
+  --accent-blue: #79a9e8;
+  --font-serif: 'Cinzel', 'Iowan Old Style', 'Palatino Linotype', Georgia, serif;
+  --font-sans: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 
   color-scheme: dark;
   font-family: var(--font-sans);
   background-color: var(--bg-primary);
   color: var(--text-primary);
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+}
+
+html {
+  background: var(--bg-primary);
 }
 
 body {
   margin: 0;
+  min-width: 320px;
   min-height: 100vh;
-  background: radial-gradient(circle at top, #16171d 0%, #0b0c10 100%);
+  background:
+    radial-gradient(circle at 50% -15%, rgba(103, 209, 227, 0.08), transparent 38rem),
+    radial-gradient(circle at 8% 0%, rgba(227, 183, 91, 0.06), transparent 32rem),
+    var(--bg-primary);
 }
 
 h1, h2, h3 {
   font-family: var(--font-serif);
   color: var(--accent-gold);
   text-transform: uppercase;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.04em;
+}
+
+h1, h2, h3, p {
+  margin-top: 0;
+}
+
+button,
+textarea {
+  font: inherit;
+}
+
+button {
+  transition: border-color 180ms ease, background-color 180ms ease, color 180ms ease, box-shadow 180ms ease, transform 180ms ease;
+}
+
+button:not(:disabled):active {
+  transform: translateY(1px);
+}
+
+button:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid var(--accent-crystal);
+  outline-offset: 2px;
+}
+
+::selection {
+  background: rgba(103, 209, 227, 0.25);
+  color: var(--text-primary);
 }
 
 * {
   box-sizing: border-box;
 }
 
+.game-panel {
+  background: linear-gradient(145deg, rgba(28, 35, 45, 0.72), rgba(21, 26, 34, 0.96));
+  border: 1px solid var(--border);
+  border-radius: 0.75rem;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.18);
+}
+
+.eyebrow {
+  font-family: var(--font-sans);
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  line-height: 1.2;
+  text-transform: uppercase;
+}
+
+.data-value {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
 .scrollbar-thin::-webkit-scrollbar {
   width: 6px;
+  height: 6px;
 }
 
 .scrollbar-thin::-webkit-scrollbar-track {
@@ -46,6 +115,10 @@ h1, h2, h3 {
 }
 
 .scrollbar-thin::-webkit-scrollbar-thumb {
-  background: var(--border);
+  background: var(--border-strong);
   border-radius: 3px;
+}
+
+.scrollbar-thin::-webkit-scrollbar-thumb:hover {
+  background: var(--accent-gold-dim);
 }

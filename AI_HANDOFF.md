@@ -10,7 +10,7 @@
 |---|---|
 | **Game** | *Rift Idler* — an idle/incremental ARPG inspired by Path of Exile systems |
 | **Repo** | `godlynot/exileed` |
-| **Milestone** | M4.5 and campaign complete; Nexus Stages 1–2 shipped, Stage 3/4 design pending |
+| **Milestone** | M4.5 and campaign complete; Nexus Stages 1–3 shipped; Stage 3 first-clear milestone rewards use Rift Crystals |
 | **Stack** | React 19, Vite, TypeScript, Tailwind CSS, Zustand, Framer Motion |
 | **Persistence** | `localStorage` only (autosave every ~30s) |
 | **Entry** | `src/main.tsx` → `src/App.tsx` |
@@ -102,8 +102,8 @@ Combat flow per tick:
 
 Key formulas:
 
-- **Evasion:** `evadeChance = evasion / (evasion + attackerAccuracy)`, capped at 95%
-- **Hit chance:** `1 - evadeChance`, minimum 5%
+- **Evasion:** `evasionChance = 1 - exp(-evasion / (attackerAccuracy * 0.75))`, capped at 95%
+- **Hit chance:** `1 - evasionChance`, with the same asymptotic cap behavior
 - **Armour mitigation:** `armour / (armour + 5 * incomingHitDamage)`
 - **Resistances:** flat additive, cap 75% (Zealot's Creed raises to 85%)
 - **Critical:** base 5% chance, 1.5x multiplier; crit chance capped at 100%
@@ -138,7 +138,7 @@ Keystones (hard-coded special hooks):
 ### 4.6 Classes & Ascendancies
 
 - **6 launch classes**: Brute, Stalker, Acolyte, Oracle, Warlord, Plaguebringer.
-- Each class has **2 ascendancies** (12 total wheels in data, 6 final + 6 placeholders).
+- Each class has **2 ascendancies** (6 final wheels in data).
 
 | Class | Primary Attributes | Ascendancy A | Ascendancy B | Design Status |
 |---|---|---|---|---|
@@ -197,19 +197,20 @@ Ascendancy mechanics wired in `combat.ts` / `passives.ts`:
 
 ### 4.9 Save System
 
-- `SAVE_VERSION = 4` in `src/systems/save.ts`
+- `SAVE_VERSION = 5` in `src/systems/save.ts`
 - Save key: `riftidler_save_v4`
 - `serializeSave` base64-encodes the full `GameState`
 - `deserializeSave` runs migration for older save versions
 - Current migration resets passive allocations to the class root (tree changed), preserves ascendancy points, adds new combat fields
 - `loadGame()` is called during app boot and offline progress is simulated in the startup overlay
+- Save loading rejects malformed/future payloads and normalizes Nexus maps, gem IDs/levels, equipped skill slots, support compatibility, and runtime counters before the store consumes them
 
 ### 4.10 Nexus Endgame
 
 - Stage 1 is shipped in `src/systems/nexus.ts`: Rift Crystals, tiered map items, charges, map entry, pack progression, completion return, and Act 8 boss rewards.
 - Stage 2 is shipped: maps roll affixes from `src/data/mapAffixes.ts`, and those effects modify Nexus monster stats and rewards.
 - The active run status is shown by `src/components/NexusRunStatus.tsx`; map entry and map details are exposed in Inventory and Crafting.
-- Stage 3 tier-completion bonuses and Stage 4's Primeval Sovereign encounter are intentionally not implemented because their mechanics and values are not yet approved.
+- Stage 3 is shipped: first clear of Nexus tiers 5, 10, 15, and 16 grants 5, 10, 15, and 16 Rift Crystals respectively; claimed tiers persist in `NexusState.completedTierRewards`, and the run status/combat log surface milestone feedback. Stage 4's Primeval Sovereign encounter remains unapproved.
 
 ---
 
@@ -229,11 +230,11 @@ Ascendancy mechanics wired in `combat.ts` / `passives.ts`:
 
 **Open / next:**
 
-- Nexus Stage 3: approve and implement tier-completion bonuses
+- Nexus Stage 3: shipped first-clear tier milestones (T5/T10/T15/T16) with persistent Rift Crystal rewards and UI/log feedback
 - Nexus Stage 4: approve and implement the Primeval Sovereign encounter
 - Herald/Marshal party-set effects (v1 self-buff limitation documented in `combat.ts`)
-- 6 unique items
-- Remove unused `konva` / `react-konva` dependencies
+- 6 unique items with hand-designed bases, unique effects, and named-elite drops
+- Passive tree dependency cleanup confirmed: no `konva` / `react-konva` packages or imports remain
 - Balance pass after the remaining systems are complete
 
 ---
@@ -279,4 +280,4 @@ bun run validate:ascendancies
 ---
 
 *Generated: 2026-07-22*
-*Last updated: 2026-08-07 (Nexus Stages 1–2 and shipped campaign status documented)*
+*Last updated: 2026-08-09 (Nexus Stage 3 milestone rewards shipped)*

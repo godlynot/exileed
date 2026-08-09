@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useGameStore } from '../store/gameStore.ts'
 import { SKILLS } from '../data/skills.ts'
+import { TICKS_PER_SECOND } from '../data/balance.ts'
 import { SUPPORTS } from '../data/supports.ts'
 import { gemXpForNextLevel } from '../systems/gems.ts'
 import { skillDisplayStats } from '../systems/combat.ts'
@@ -9,7 +10,9 @@ export function SkillsPanel() {
   const character = useGameStore(state => state.character)
   const combat = useGameStore(state => state.combat)
   const equipSkill = useGameStore(state => state.equipSkill)
+  const unequipSkill = useGameStore(state => state.unequipSkill)
   const equipSupport = useGameStore(state => state.equipSupport)
+  const unequipSupport = useGameStore(state => state.unequipSupport)
 
   const [selectedSkillSlot, setSelectedSkillSlot] = useState<number | null>(null)
   const [selectedSupportSlot, setSelectedSupportSlot] = useState<{ skill: number; support: number } | null>(null)
@@ -43,7 +46,7 @@ export function SkillsPanel() {
                   {skill.tags.join(' · ')}
                   <div className="text-xs text-gray-500">
                     {computed.minDamage}–{computed.maxDamage} {skill.damageType} · {(
-                      computed.cooldownTicks / 10
+                      computed.cooldownTicks / TICKS_PER_SECOND
                     ).toFixed(1)}s cooldown
                   </div>
                   {(() => {
@@ -56,6 +59,13 @@ export function SkillsPanel() {
                       </div>
                     )
                   })()}
+                  <button
+                    onClick={() => unequipSkill(slotIndex)}
+                    className="mt-2 rounded border border-red-900/70 bg-red-950/20 px-2 py-1 text-[10px] uppercase tracking-wider text-red-300 transition-colors hover:bg-red-950/50"
+                    aria-label={`Unequip ${skill.name} from skill slot ${slotIndex + 1}`}
+                  >
+                    Unequip
+                  </button>
                 </div>
               )}
               {skill && equipped && (
@@ -69,6 +79,7 @@ export function SkillsPanel() {
                         onClick={() => setSelectedSupportSlot({ skill: slotIndex, support: supportIdx })}
                         className="aspect-square bg-[#1f2028] border border-[#2e303a] rounded text-[10px] text-gray-300 hover:bg-[#2e303a]"
                         title={support?.name ?? 'Empty support slot'}
+                        aria-label={`${support?.name ?? 'Empty support slot'} for ${skill.name}, slot ${supportIdx + 1}`}
                       >
                         {support ? support.name.slice(0, 8) : '+'}
                         {support && (() => {
@@ -88,8 +99,13 @@ export function SkillsPanel() {
 
       {selectedSkillSlot !== null && (
         <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
-          <div className="bg-[#15161d] border border-[#2e303a] rounded-lg p-6 max-w-md w-full max-h-[80vh] overflow-auto">
-            <h3 className="text-lg font-serif text-[#d4a017] mb-4">Choose a Skill</h3>
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="skill-picker-title"
+            className="bg-[#15161d] border border-[#2e303a] rounded-lg p-6 max-w-md w-full max-h-[80vh] overflow-auto"
+          >
+            <h3 id="skill-picker-title" className="text-lg font-serif text-[#d4a017] mb-4">Choose a Skill</h3>
             <div className="space-y-2">
               {Object.keys(SKILLS).map(id => {
                 const skill = SKILLS[id]
@@ -117,8 +133,13 @@ export function SkillsPanel() {
 
       {selectedSupportSlot && (
         <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
-          <div className="bg-[#15161d] border border-[#2e303a] rounded-lg p-6 max-w-md w-full max-h-[80vh] overflow-auto">
-            <h3 className="text-lg font-serif text-[#d4a017] mb-4">Choose a Support</h3>
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="support-picker-title"
+            className="bg-[#15161d] border border-[#2e303a] rounded-lg p-6 max-w-md w-full max-h-[80vh] overflow-auto"
+          >
+            <h3 id="support-picker-title" className="text-lg font-serif text-[#d4a017] mb-4">Choose a Support</h3>
             <div className="space-y-2">
               {Object.keys(SUPPORTS).map(id => {
                 const support = SUPPORTS[id]
@@ -131,7 +152,7 @@ export function SkillsPanel() {
                     key={id}
                     disabled={!owned || !compatible}
                     onClick={() => {
-                      equipSupport(id, selectedSupportSlot.skill)
+                      equipSupport(id, selectedSupportSlot.skill, selectedSupportSlot.support)
                       setSelectedSupportSlot(null)
                     }}
                     className="w-full text-left p-3 rounded bg-[#1f2028] hover:bg-[#2e303a] disabled:opacity-40 border border-[#2e303a]"
@@ -142,7 +163,25 @@ export function SkillsPanel() {
                 )
               })}
             </div>
-            <button onClick={() => setSelectedSupportSlot(null)} className="mt-4 w-full py-2 bg-[#2e303a] rounded text-sm">Cancel</button>
+            <div className="mt-4 grid grid-cols-2 gap-2">
+              {character.equippedSkills[selectedSupportSlot.skill]?.supportIds[selectedSupportSlot.support] && (
+                <button
+                  onClick={() => {
+                    unequipSupport(selectedSupportSlot.skill, selectedSupportSlot.support)
+                    setSelectedSupportSlot(null)
+                  }}
+                  className="py-2 rounded text-sm border border-red-900/70 bg-red-950/30 text-red-300 hover:bg-red-950/50"
+                >
+                  Remove support
+                </button>
+              )}
+              <button
+                onClick={() => setSelectedSupportSlot(null)}
+                className="py-2 bg-[#2e303a] rounded text-sm"
+              >
+                Cancel
+              </button>
+            </div>
           </div>
         </div>
       )}

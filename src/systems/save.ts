@@ -1,17 +1,86 @@
 import { PASSIVE_TREE } from '../data/passiveTree.ts'
 import type { GameState, MapAffix, NexusMap } from '../types/game.ts'
 import { MAP_AFFIXES_BY_ID } from '../data/mapAffixes.ts'
+import { SKILLS } from '../data/skills.ts'
+import { SUPPORTS } from '../data/supports.ts'
 import { clampNexusTier, nexusMapChargesForTier, nexusTierLevel } from './nexus.ts'
 
 export const SAVE_VERSION = 5
 export const SAVE_KEY = 'riftidler_save_v4'
 
+const MAX_SKILL_SLOTS = 4
+const MAX_SUPPORT_SLOTS = 5
+
+function normalizeGemProgress(value: unknown): GameState['character']['ownedGems'] {
+  if (!Array.isArray(value)) return []
+
+  const seen = new Set<string>()
+  return value.flatMap(candidate => {
+    if (!candidate || typeof candidate !== 'object') return []
+    const gem = candidate as { id?: unknown; level?: unknown; xp?: unknown }
+    if (typeof gem.id !== 'string' || (!SKILLS[gem.id] && !SUPPORTS[gem.id]) || seen.has(gem.id)) return []
+    seen.add(gem.id)
+    const level = typeof gem.level === 'number' && Number.isFinite(gem.level)
+      ? Math.max(1, Math.min(20, Math.floor(gem.level)))
+      : 1
+    const xp = typeof gem.xp === 'number' && Number.isFinite(gem.xp)
+      ? Math.max(0, Math.floor(gem.xp))
+      : 0
+    return [{ id: gem.id, level, xp }]
+  })
+}
+
+function normalizeEquippedSkills(value: unknown, supportSlotCount: number): GameState['character']['equippedSkills'] {
+  if (!Array.isArray(value)) return []
+
+  return value.slice(0, MAX_SKILL_SLOTS).map(candidate => {
+    if (!candidate || typeof candidate !== 'object') {
+      return { skillId: '', supportIds: [], cooldownRemaining: 0, hitCounter: 0 }
+    }
+    const equipped = candidate as { skillId?: unknown; supportIds?: unknown; cooldownRemaining?: unknown; hitCounter?: unknown }
+    const skillId = typeof equipped.skillId === 'string' && SKILLS[equipped.skillId] ? equipped.skillId : ''
+    const supportIds = Array.isArray(equipped.supportIds)
+      ? equipped.supportIds.slice(0, supportSlotCount).filter((supportId, index, ids): supportId is string =>
+          typeof supportId === 'string' &&
+          !!SUPPORTS[supportId] &&
+          ids.indexOf(supportId) === index &&
+          !!skillId &&
+          SUPPORTS[supportId].allowedTags.some(tag => SKILLS[skillId].tags.includes(tag)),
+        )
+      : []
+    const cooldownRemaining = typeof equipped.cooldownRemaining === 'number' && Number.isFinite(equipped.cooldownRemaining)
+      ? Math.max(0, Math.floor(equipped.cooldownRemaining))
+      : 0
+    const hitCounter = typeof equipped.hitCounter === 'number' && Number.isFinite(equipped.hitCounter)
+      ? Math.max(0, Math.floor(equipped.hitCounter))
+      : 0
+    return { skillId, supportIds, cooldownRemaining, hitCounter }
+  })
+}
+
+function normalizeCharacterData(value: unknown): GameState['character'] | null {
+  if (!value || typeof value !== 'object') return null
+  const character = value as GameState['character']
+  const supportSlotCount = typeof character.supportSlotCount === 'number' && Number.isFinite(character.supportSlotCount)
+    ? Math.max(2, Math.min(MAX_SUPPORT_SLOTS, Math.floor(character.supportSlotCount)))
+    : 2
+  return {
+    ...character,
+    supportSlotCount,
+    ownedGems: normalizeGemProgress(character.ownedGems),
+    equippedSkills: normalizeEquippedSkills(character.equippedSkills, supportSlotCount),
+    keystoneChoices: character.keystoneChoices && typeof character.keystoneChoices === 'object'
+      ? character.keystoneChoices
+      : {},
+  }
+}
+
 function normalizeNexusState(value: unknown): GameState['nexus'] {
   if (!value || typeof value !== 'object') {
-    return { maps: [], activeMapId: null, packsCleared: 0 }
+    return { maps: [], activeMapId: null, packsCleared: 0, completedTierRewards: [] }
   }
 
-  const raw = value as { maps?: unknown; activeMapId?: unknown; packsCleared?: unknown }
+  const raw = value as { maps?: unknown; activeMapId?: unknown; packsCleared?: unknown; completedTierRewards?: unknown }
   const maps: NexusMap[] = Array.isArray(raw.maps)
     ? raw.maps.flatMap(candidate => {
         if (!candidate || typeof candidate !== 'object') return []
@@ -48,6 +117,10 @@ function normalizeNexusState(value: unknown): GameState['nexus'] {
       })
     : []
 
+  const completedTierRewards = Array.isArray(raw.completedTierRewards)
+    ? [...new Set(raw.completedTierRewards.flatMap(tier => typeof tier === 'number' && Number.isFinite(tier) ? [clampNexusTier(tier)] : []))].sort((a, b) => a - b)
+    : []
+
   return {
     maps,
     activeMapId: typeof raw.activeMapId === 'string' && maps.some(map => map.id === raw.activeMapId)
@@ -56,6 +129,7 @@ function normalizeNexusState(value: unknown): GameState['nexus'] {
     packsCleared: typeof raw.packsCleared === 'number' && Number.isFinite(raw.packsCleared)
       ? Math.max(0, Math.floor(raw.packsCleared))
       : 0,
+    completedTierRewards,
   }
 }
 
@@ -114,7 +188,7 @@ function migrateSave(parsed: Record<string, unknown>): Partial<GameState> {
 
   // Nexus: ensure the nexus state and rift_crystal currency exist on old saves.
   if (!state.nexus) {
-    state.nexus = { maps: [], activeMapId: null, packsCleared: 0 }
+    state.nexus = { maps: [], activeMapId: null, packsCleared: 0, completedTierRewards: [] }
   }
   if (state.currencies) {
     const currencies = state.currencies as Record<string, unknown>
@@ -128,9 +202,11 @@ function migrateSave(parsed: Record<string, unknown>): Partial<GameState> {
   character.allocatedNodes = [`root_${classId}`]
   character.passivePoints = (character.passivePoints ?? 0) + refundedPoints
 
+  const normalizedCharacter = normalizeCharacterData(character)
+
   return {
     ...state,
-    character,
+    character: normalizedCharacter ?? character,
     nexus: normalizeNexusState(state.nexus),
     passiveTree: PASSIVE_TREE,
     saveVersion: SAVE_VERSION,
@@ -145,12 +221,22 @@ export function deserializeSave(data: string): GameState | null {
     if (parsed.saveVersion !== SAVE_VERSION) {
       if (parsed.saveVersion < SAVE_VERSION) {
         console.warn(`Migrating save from version ${parsed.saveVersion}`)
-        return migrateSave(parsed) as GameState
+        const migrated = migrateSave(parsed)
+        const character = normalizeCharacterData(migrated.character)
+        if (!character) return null
+        return {
+          ...migrated,
+          character,
+          nexus: normalizeNexusState(migrated.nexus),
+        } as GameState
       }
       return null
     }
+    const character = normalizeCharacterData(parsed.character)
+    if (!character) return null
     return {
       ...parsed,
+      character,
       nexus: normalizeNexusState(parsed.nexus),
     } as GameState
   } catch (e) {

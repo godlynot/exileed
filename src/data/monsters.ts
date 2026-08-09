@@ -1160,6 +1160,21 @@ export const MONSTERS: Record<string, Monster> = {
     rarity: 'normal',
   },
 
+  carrion_moth: {
+    id: 'carrion_moth',
+    name: 'Carrion Moth',
+    level: 51,
+    life: 90000,
+    maxLife: 90000,
+    damage: [{ type: 'chaos', min: 260, max: 520 }],
+    attackRate: 2.4,
+    accuracy: 530,
+    evasion: 650,
+    experienceReward: 720,
+    goldReward: 120,
+    rarity: 'normal',
+  },
+
   blight_bringer: {
     id: 'blight_bringer',
     name: 'Blight Bringer',

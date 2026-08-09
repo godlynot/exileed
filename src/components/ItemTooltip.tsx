@@ -1,6 +1,12 @@
 import { rarityTextClass, rarityBorderClass } from '../types/item.ts'
 import type { Item } from '../types/item.ts'
 import { RARITY_RANGE } from '../systems/items.ts'
+import type { Affix } from '../types/item.ts'
+
+function formatImplicitValue(affix: Affix): string {
+  if (affix.stat.endsWith('Resistance') || affix.stat.endsWith('Percent')) return `+${affix.value}%`
+  return `+${affix.value}`
+}
 
 interface ItemTooltipProps {
   item: Item
@@ -9,12 +15,12 @@ interface ItemTooltipProps {
 
 export function ItemTooltip({ item, compact }: ItemTooltipProps) {
   return (
-    <div className={`bg-[#0b0c10] border ${rarityBorderClass(item.rarity)} p-3 rounded shadow-2xl max-w-xs ${compact ? 'text-xs' : 'text-sm'}`}>
+    <div className={`max-w-xs rounded-lg border bg-[var(--bg-primary)] p-3 shadow-2xl ${rarityBorderClass(item.rarity)} ${compact ? 'text-xs' : 'text-sm'}`}>
       {/* Header */}
       <div className={`font-bold ${rarityTextClass(item.rarity)} ${compact ? 'text-sm' : 'text-base'} mb-0.5`}>
         {item.name}
       </div>
-      <div className="text-xs text-gray-500 mb-2">
+      <div className="mb-2 text-xs text-[var(--text-muted)]">
         {item.rarity} {item.slot} <span className="text-gray-600">• iLvl {item.itemLevel}</span>
       </div>
 
@@ -29,7 +35,7 @@ export function ItemTooltip({ item, compact }: ItemTooltipProps) {
       <div className="space-y-0.5 mb-2">
         {item.physicalDamageMin > 0 && (
           <div className="text-gray-200">
-            <span className="text-[#d4a017]">{item.physicalDamageMin}-{item.physicalDamageMax}</span> Physical Damage
+            <span className="text-[var(--accent-gold)]">{item.physicalDamageMin}-{item.physicalDamageMax}</span> Physical Damage
           </div>
         )}
         {item.flatLightningDamageMin > 0 && (
@@ -59,9 +65,26 @@ export function ItemTooltip({ item, compact }: ItemTooltipProps) {
         {item.goldFindPercent > 0 && <div className="text-yellow-300">+{item.goldFindPercent}% increased Gold Find</div>}
       </div>
 
+      {item.uniqueDescription && (
+        <div className="mb-2 rounded border border-orange-400/30 bg-orange-950/20 px-2 py-1.5 text-xs italic text-orange-200">
+          {item.uniqueDescription}
+        </div>
+      )}
+
+      {item.implicit && item.implicit.length > 0 && (
+        <div className="mb-2 space-y-0.5 border-t border-orange-400/30 pt-2">
+          <div className="mb-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-orange-300/80">Unique effects</div>
+          {item.implicit.map(affix => (
+            <div key={affix.id} className="text-orange-200">
+              {affix.name} <span className="text-orange-100/70">({formatImplicitValue(affix)})</span>
+            </div>
+          ))}
+        </div>
+      )}
+
       {/* Affixes */}
       {item.affixes.length > 0 && (
-        <div className="border-t border-[#2e303a] pt-2 space-y-0.5">
+        <div className="space-y-0.5 border-t border-[var(--border)] pt-2">
           {item.affixes.map((affix, idx) => {
             const isPrefix = affix.type === 'prefix'
             return (

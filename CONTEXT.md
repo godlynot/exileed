@@ -20,7 +20,7 @@ This file captures the full game spec, confirmed decisions, proposed original na
 |---|---|
 | Game title | **Rift Idler** |
 | Elemental resistances | **Keep Fire / Cold / Lightning / Chaos separate** (load-bearing gearing loop) |
-| Passive tree rendering | **SVG-based**. Konva/react-konva are pending removal. |
+| Passive tree rendering | **SVG-based**. No Konva dependency is used. |
 | Offline progress | **Wired**: boot overlay simulates away-time (capped 8h, chunked hourly) via real combat ticks |
 | Integrations | **None** — strictly client-side as specified |
 | ES recharge | **Delay-based**: 3 seconds without damage, then 25% ES per second |
@@ -67,7 +67,7 @@ The user explicitly rejected cutting load-bearing systems. The following reduce 
 
 ### M1 — Core Loop ✅
 - [x] Project scaffold (React + Vite + TypeScript + Tailwind + Zustand)
-- [x] Tick loop at 5 ticks/sec (`TICK_RATE = 200ms` in `src/data/balance.ts`)
+- [x] Tick loop at 2.5 ticks/sec (`TICK_RATE = 400ms` in `src/data/balance.ts`)
 - [x] Three classes with unique base stats and starter gear
 - [x] Auto-combat (player vs. monster)
 - [x] XP, leveling, passive points
@@ -134,10 +134,10 @@ The user explicitly rejected cutting load-bearing systems. The following reduce 
 - [ ] Implement party/minion system so Herald auras and Marshal armies target the whole party set
 - [x] Nexus Stage 1: Rift Crystals, tiered maps, charges, entry, and completion return
 - [x] Nexus Stage 2: rolled map affixes and map-modified monster/reward effects
-- [ ] Nexus Stage 3: tier-completion bonuses (design values/mechanics not yet approved)
+- [x] Nexus Stage 3: first-clear tier milestones award Rift Crystals at T5 (+5), T10 (+10), T15 (+15), and T16 (+16); claimed tiers persist and the active-run UI/combat log show feedback.
 - [ ] Nexus Stage 4: pinnacle encounter, The Primeval Sovereign (design not yet approved)
-- [ ] 6 unique items
-- [ ] Remove or use `konva` / `react-konva` dependencies
+- [x] 6 unique items with hand-designed bases, unique effects, and named-elite drops
+- [x] Confirm unused `konva` / `react-konva` dependencies are absent; passive tree uses SVG
 
 ---
 
@@ -218,7 +218,7 @@ Avoid all Path of Exile trademarked terms.
 | Rift Hazard Level instead of rolled affixes | **Rejected** — keep full map affix rolling |
 | ES recharges after 4s without hit | **Accepted** — 3 seconds without damage |
 | Reduce to 1 ascendancy per class | **Rejected** — keep 2 per class |
-| Passive tree renderer | **SVG** accepted over Konva |
+| Passive tree renderer | **SVG** accepted; Konva is not used |
 
 ---
 
@@ -237,10 +237,10 @@ Avoid all Path of Exile trademarked terms.
 
 ## 9. Open Questions Remaining
 
-1. What are the approved mechanics and values for Nexus Stage 3 tier-completion bonuses?
-2. What are the approved mechanics, access condition, phases, and rewards for Stage 4's Primeval Sovereign encounter?
-3. Should we implement the party/minion target-set abstraction before adding more aura/army effects?
-4. Should we remove the unused `konva` and `react-konva` dependencies?
+1. Nexus Stage 3 is implemented; tune milestone amounts only after live progression review.
+2. The six unique items are implemented; tune their drop frequency and power only after live progression review.
+3. What are the approved mechanics, access condition, phases, and rewards for Stage 4's Primeval Sovereign encounter?
+4. Should we implement the party/minion target-set abstraction before adding more aura/army effects?
 
 ---
 
@@ -258,4 +258,4 @@ Avoid all Path of Exile trademarked terms.
 
 ---
 
-*Last updated: 2026-08-07 (Nexus Stages 1–2 and map-affix implementation documented)*
+*Last updated: 2026-08-09 (Nexus Stage 3 milestone rewards shipped)*

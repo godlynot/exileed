@@ -883,7 +883,7 @@ export function simulateTick(state: GameState): { state: GameState; events: Comb
   let gamePhase = state.gamePhase
   let activeZoneId = state.activeZoneId
   let previousZoneId = state.previousZoneId
-  const sourceNexus = state.nexus ?? { maps: [], activeMapId: null, packsCleared: 0 }
+  const sourceNexus = state.nexus ?? { maps: [], activeMapId: null, packsCleared: 0, completedTierRewards: [] }
   let nexus = {
     ...sourceNexus,
     maps: (Array.isArray(sourceNexus.maps) ? sourceNexus.maps : []).map(map => ({ ...map })),

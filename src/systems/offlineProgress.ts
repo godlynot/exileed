@@ -5,7 +5,7 @@ import {
   OFFLINE_PROGRESS_MIN_SECONDS,
   TICKS_PER_SECOND,
 } from '../data/balance.ts'
-import { addProgressionDropsToInventory } from './items.ts'
+import { addProgressionDropsToInventory, consumeGeneratedDrops } from './items.ts'
 import { simulateTick } from './combat.ts'
 
 /**
@@ -36,6 +36,11 @@ export async function simulateOfflineProgress(
   seconds: number,
   onChunk?: (progress: number) => void,
 ): Promise<OfflineSimResult> {
+  // Equipment drops are queued as a side channel for the live store's loot
+  // event enrichment. Offline simulation already applies drop rewards inside
+  // simulateTick, so drain that queue on every simulated tick instead of
+  // retaining potentially thousands of stale items until the next live tick.
+  consumeGeneratedDrops()
   const totalTicks = Math.max(0, Math.floor(seconds * TICKS_PER_SECOND))
   const chunkTicks = Math.max(1, Math.floor(OFFLINE_PROGRESS_CHUNK_HOURS * 3600 * TICKS_PER_SECOND))
   const zeroSummary: OfflineSummary = {
@@ -64,6 +69,7 @@ export async function simulateOfflineProgress(
     const batch = Math.min(chunkTicks, totalTicks - ticksDone)
     for (let i = 0; i < batch; i++) {
       const { state: next, events: tickEvents } = simulateTick(sim)
+      consumeGeneratedDrops()
       // The store normally advances tickCounter per tick; do it here so
       // periodic timers (storm ticks, DOT cadence, etc.) fire correctly.
       sim = { ...next, tickCounter: next.tickCounter + 1 }
@@ -88,7 +94,11 @@ export async function simulateOfflineProgress(
           timestamp: Date.now(),
           type: 'itemDropped' as const,
           itemId: dropped.id,
+          itemName: dropped.name,
+          slot: dropped.slot,
+          itemLevel: dropped.itemLevel,
           rarity: dropped.rarity,
+          outcome: 'stored' as const,
         }))
         events = [...events, ...progressionEvents]
       }

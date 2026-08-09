@@ -10,7 +10,21 @@ export const NEXUS_BASE_PACKS = 3
 export const NEXUS_RIFT_CRYSTAL_DROP_CHANCE = 0.1
 export const NEXUS_MAP_SUSTAIN_CHANCE = 0.5
 
+// Stage 3 milestone rewards: first clear of these high-water tiers grants a
+// one-time Rift Crystal bonus. The final tier gets a larger capstone reward.
+export const NEXUS_TIER_REWARD_MILESTONES = [
+  { tier: 5, amount: 5 },
+  { tier: 10, amount: 10 },
+  { tier: 15, amount: 15 },
+  { tier: 16, amount: 16 },
+] as const
+
 let nexusMapIdCounter = 0
+
+export function nexusTierCompletionRewardForTier(tier: number): number {
+  const safeTier = clampNexusTier(tier)
+  return NEXUS_TIER_REWARD_MILESTONES.find(milestone => milestone.tier === safeTier)?.amount ?? 0
+}
 
 export function isNexusZoneId(zoneId: string): boolean {
   return zoneId.startsWith('nexus_map_')
@@ -93,6 +107,8 @@ export function riftCrystalRewardForBoss(zone: Zone | undefined, monster: Monste
 export interface NexusPackClearResult {
   nexus: NexusState
   mapCompleted: boolean
+  riftCrystalReward: number
+  completedTier: number | null
 }
 
 /**
@@ -100,25 +116,38 @@ export interface NexusPackClearResult {
  * the map's required pack count is reached; exhausted maps leave the stash.
  */
 export function recordNexusPackClear(nexus: NexusState): NexusPackClearResult {
-  if (!nexus.activeMapId) return { nexus, mapCompleted: false }
+  const completedTierRewards = [...new Set(
+    (nexus.completedTierRewards ?? []).filter(tier => Number.isFinite(tier)).map(tier => clampNexusTier(tier))
+  )]
+  const unchanged = (nextNexus: NexusState, mapCompleted: boolean): NexusPackClearResult => ({
+    nexus: nextNexus,
+    mapCompleted,
+    riftCrystalReward: 0,
+    completedTier: null,
+  })
+
+  if (!nexus.activeMapId) return unchanged(nexus, false)
 
   const map = nexus.maps.find(candidate => candidate.id === nexus.activeMapId)
   if (!map || map.currentCharges <= 0) {
-    return {
-      nexus: { ...nexus, activeMapId: null, packsCleared: 0 },
-      mapCompleted: false,
-    }
+    return unchanged({ ...nexus, activeMapId: null, packsCleared: 0, completedTierRewards }, false)
   }
 
   const packsCleared = nexus.packsCleared + 1
   if (packsCleared < nexusMapPacksForTier(map.tier)) {
-    return { nexus: { ...nexus, packsCleared }, mapCompleted: false }
+    return unchanged({ ...nexus, packsCleared, completedTierRewards }, false)
   }
 
   const currentCharges = Math.max(0, map.currentCharges - 1)
   const maps = currentCharges > 0
     ? nexus.maps.map(candidate => candidate.id === map.id ? { ...candidate, currentCharges } : candidate)
     : nexus.maps.filter(candidate => candidate.id !== map.id)
+  const tierReward = nexusTierCompletionRewardForTier(map.tier)
+  const alreadyClaimed = completedTierRewards.includes(map.tier)
+  const riftCrystalReward = alreadyClaimed ? 0 : tierReward
+  const nextCompletedTierRewards = riftCrystalReward > 0
+    ? [...completedTierRewards, map.tier].sort((a, b) => a - b)
+    : completedTierRewards
 
   return {
     nexus: {
@@ -126,7 +155,10 @@ export function recordNexusPackClear(nexus: NexusState): NexusPackClearResult {
       maps,
       activeMapId: null,
       packsCleared: 0,
+      completedTierRewards: nextCompletedTierRewards,
     },
     mapCompleted: true,
+    riftCrystalReward,
+    completedTier: riftCrystalReward > 0 ? map.tier : null,
   }
 }
