@@ -1,25 +1,35 @@
 import { useGameStore } from './store/gameStore.ts'
 import { useGameLoop } from './hooks/useGameLoop.ts'
 import { Shield, Heart, Skull, MapPin, Save, RotateCcw, Package, ShieldCheck, Settings, Hammer, TreePine, Sparkles } from 'lucide-react'
-import { useState, useMemo } from 'react'
-import { InventoryPanel } from './components/InventoryPanel.tsx'
+import { lazy, Suspense, useState, useMemo } from 'react'
 import { ClassSelection } from './components/ClassSelection.tsx'
 import { CombatScene } from './components/CombatScene.tsx'
 import { CombatLog } from './components/CombatLog.tsx'
 import { AscendancySelection } from './components/AscendancySelection.tsx'
 import { DevTools } from './components/DevTools.tsx'
 import { CharacterStats } from './components/CharacterStats.tsx'
-
-import { EquipmentPanel } from './components/EquipmentPanel.tsx'
-import { CraftingPanel } from './components/CraftingPanel.tsx'
-import { PassiveTreePanel } from './components/PassiveTreePanel.tsx'
-import { AscendancyTree } from './components/AscendancyTree.tsx'
-import { SkillsPanel } from './components/SkillsPanel.tsx'
 import { NexusRunStatus } from './components/NexusRunStatus.tsx'
 import { OfflineProgressOverlay } from './components/OfflineProgressOverlay.tsx'
+
+// Secondary panels are loaded on demand so the first combat view does not pay
+// for the passive tree, crafting UI, and other rarely visited screens.
+const InventoryPanel = lazy(() => import('./components/InventoryPanel.tsx').then(module => ({ default: module.InventoryPanel })))
+const EquipmentPanel = lazy(() => import('./components/EquipmentPanel.tsx').then(module => ({ default: module.EquipmentPanel })))
+const CraftingPanel = lazy(() => import('./components/CraftingPanel.tsx').then(module => ({ default: module.CraftingPanel })))
+const PassiveTreePanel = lazy(() => import('./components/PassiveTreePanel.tsx').then(module => ({ default: module.PassiveTreePanel })))
+const AscendancyTree = lazy(() => import('./components/AscendancyTree.tsx').then(module => ({ default: module.AscendancyTree })))
+const SkillsPanel = lazy(() => import('./components/SkillsPanel.tsx').then(module => ({ default: module.SkillsPanel })))
 import { ASCENDANCIES, TRIALS } from './data/ascendancies.ts'
 
 type Tab = 'zone' | 'inventory' | 'equipment' | 'crafting' | 'tree' | 'ascendancy' | 'skills' | 'settings'
+
+function PanelLoading() {
+  return (
+    <div className="flex min-h-32 items-center justify-center rounded-lg border border-[var(--border)] bg-[var(--bg-panel)] text-xs uppercase tracking-wider text-[var(--text-muted)]">
+      Loading panel…
+    </div>
+  )
+}
 
 function App() {
   const tick = useGameStore(state => state.tick)
@@ -266,6 +276,7 @@ function App() {
             </div>
 
             <div className="flex-1 overflow-y-auto scrollbar-thin">
+              <Suspense fallback={<PanelLoading />}>
               {activeTab === 'zone' && (
                 <div className="space-y-4">
                   <h2 className="text-lg font-serif text-[var(--accent-gold)]">Acts</h2>
@@ -351,6 +362,7 @@ function App() {
                   </button>
                 </div>
               )}
+              </Suspense>
             </div>
           </section>
         </section>
