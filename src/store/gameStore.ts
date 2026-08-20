@@ -18,10 +18,18 @@ import { createNexusMap, nexusMapCrystalCost, nexusTierCompletionRewardForTier, 
 import { BASE_ITEMS, STARTER_ITEMS } from '../data/items.ts'
 import { SUPPORTS } from '../data/supports.ts'
 import { SKILLS } from '../data/skills.ts'
-import { addProgressionDropsToInventory, consumeGeneratedDrops, createItem, applyOrb, recalculateCharacterFromEquipment } from '../systems/items.ts'
+import { addProgressionDropsToInventory, consumeGeneratedDrops, createItem, applyOrb, recalculateCharacterFromEquipment, shouldAutoSellItem } from '../systems/items.ts'
 
 const SAVE_INTERVAL_TICKS = TICKS_PER_SECOND * 30
 const INVENTORY_CAPACITY = 30
+const MAX_CHARACTER_LEVEL = 90
+
+function normalizeAutoSellMaxLevel(value: unknown): number {
+  const configuredMaxLevel = Number(value ?? 0)
+  return Number.isFinite(configuredMaxLevel) && configuredMaxLevel > 0
+    ? Math.min(MAX_CHARACTER_LEVEL, Math.floor(configuredMaxLevel))
+    : 0
+}
 
 const STARTER_SKILL_BY_CLASS: Record<ClassId, string> = {
   brute: 'strike',
@@ -154,7 +162,7 @@ function normalizeInventory(inventory: InventoryState | undefined): InventorySta
     maxSize: INVENTORY_CAPACITY,
     autoSellNormal: inventory?.autoSellNormal ?? true,
     autoSellMagic: inventory?.autoSellMagic ?? true,
-    autoSellMaxLevel: inventory?.autoSellMaxLevel ?? 0,
+    autoSellMaxLevel: normalizeAutoSellMaxLevel(inventory?.autoSellMaxLevel),
   }
 }
 
@@ -268,6 +276,7 @@ interface GameActions {
   craftNexusMap: (tier: number) => void
   openNexusMap: (mapId: string) => void
   toggleAutoSell: (type: 'normal' | 'magic') => void
+  setAutoSellMaxLevel: (maxLevel: number) => void
   allocateNode: (nodeId: string) => void
   refundNode: (nodeId: string) => void
   selectAscendancy: (ascendancyId: string) => void
@@ -333,12 +342,37 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
       consumeGeneratedDrops()
       const { state: nextState, events } = simulateTick(state)
       const generatedDrops = consumeGeneratedDrops()
-      const autoSoldEvents = generatedDrops
+      const autoSoldByCombat = generatedDrops
         .filter(dropped =>
           (dropped.rarity === 'normal' && nextState.inventory.autoSellNormal && dropped.itemLevel <= nextState.character.level) ||
           (dropped.rarity === 'magic' && nextState.inventory.autoSellMagic && dropped.itemLevel <= nextState.character.level),
         )
         .filter(dropped => !events.some(event => event.type === 'itemDropped' && event.itemId === dropped.id))
+      const configuredMaxLevel = Number(nextState.inventory.autoSellMaxLevel)
+      const restoredDrops = Number.isFinite(configuredMaxLevel) && configuredMaxLevel > 0
+        ? autoSoldByCombat
+          .filter(dropped => !shouldAutoSellItem(dropped, nextState.inventory, nextState.character.level))
+          .slice(0, Math.max(0, nextState.inventory.maxSize - nextState.inventory.items.length))
+        : []
+      if (restoredDrops.length > 0) {
+        const restoredGold = restoredDrops.reduce((total, dropped) => total + Math.max(1, dropped.itemLevel * 2), 0)
+        nextState.inventory = { ...nextState.inventory, items: [...nextState.inventory.items, ...restoredDrops] }
+        nextState.currencies = { ...nextState.currencies, gold: Math.max(0, (nextState.currencies.gold || 0) - restoredGold) }
+      }
+      const restoredDropIds = new Set(restoredDrops.map(dropped => dropped.id))
+      const restoredEvents = restoredDrops.map(dropped => ({
+        id: `loot_restored_${dropped.id}`,
+        timestamp: Date.now(),
+        type: 'itemDropped' as const,
+        itemId: dropped.id,
+        itemName: dropped.name,
+        slot: dropped.slot,
+        itemLevel: dropped.itemLevel,
+        rarity: dropped.rarity,
+        outcome: 'stored' as const,
+      }))
+      const autoSoldEvents = autoSoldByCombat
+        .filter(dropped => !restoredDropIds.has(dropped.id))
         .map(dropped => ({
           id: `loot_autosell_${dropped.id}`,
           timestamp: Date.now(),
@@ -351,7 +385,7 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
           outcome: 'autoSold' as const,
           goldValue: Math.max(1, dropped.itemLevel * 2),
         }))
-      const tickEvents = [...events, ...autoSoldEvents].map(event => {
+      const tickEvents = [...events, ...restoredEvents, ...autoSoldEvents].map(event => {
         if (event.type !== 'itemDropped' || event.itemName) return event
         const dropped = nextState.inventory.items.find(item => item.id === event.itemId)
         return dropped
@@ -624,6 +658,16 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
       inventory: {
         ...state.inventory,
         [type === 'normal' ? 'autoSellNormal' : 'autoSellMagic']: !state.inventory[type === 'normal' ? 'autoSellNormal' : 'autoSellMagic'],
+      },
+    }))
+  },
+
+  setAutoSellMaxLevel: (maxLevel: number) => {
+    set(state => ({
+      ...state,
+      inventory: {
+        ...state.inventory,
+        autoSellMaxLevel: normalizeAutoSellMaxLevel(maxLevel),
       },
     }))
   },

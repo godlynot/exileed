@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, spyOn } from "bun:test";
 import { skillDamage, armourMitigation, applyResistance, hitChance, createCombatState, processSkillHits, aggregateSupportModifiers, simulateTick, spawnMonster, rangeBandHitCount } from "./combat.ts";
 import type { Character, Monster, Skill, EquippedSkill, CombatState, GameState, Zone, PackMember } from "../types/game.ts";
+import { MONSTERS } from "../data/monsters.ts";
 
 // --- Fixtures ---
 
@@ -362,6 +363,68 @@ describe("combat simulation regressions", () => {
     randomMock.mockRestore();
   });
 });
+
+describe("late campaign survivability fixtures", () => {
+  function runIncomingDamage(monsterId: string, overrides: Partial<Character>): number {
+    const template = MONSTERS[monsterId]
+    if (!template) throw new Error(`Missing late-campaign fixture: ${monsterId}`)
+
+    const character = makeCharacter({
+      level: template.level,
+      life: 100_000,
+      maxLife: 100_000,
+      evasion: 0,
+      equippedSkills: [],
+      ...overrides,
+    })
+    const fixtureMonster = { ...template, life: 1_000_000, maxLife: 1_000_000 }
+    const fixtureMember: PackMember = {
+      id: `fixture_${monsterId}`,
+      monster: fixtureMonster,
+      currentLife: fixtureMonster.life,
+      maxLife: fixtureMonster.maxLife,
+      slot: 0,
+    }
+    const fixtureCombat: CombatState = {
+      ...makeCombat(fixtureMonster),
+      currentPack: [fixtureMember],
+      monster: fixtureMonster,
+      monsterLife: fixtureMonster.life,
+    }
+    let current = makeGameState(character, fixtureCombat)
+    const randomMock = spyOn(Math, "random").mockReturnValue(0)
+    try {
+      // Ten real simulation ticks smooth out attack cadence while keeping the
+      // fixture deterministic and far from player death.
+      for (let tick = 0; tick < 10; tick++) {
+        current = simulateTick(current).state
+      }
+      return character.life - current.character.life
+    } finally {
+      randomMock.mockRestore()
+    }
+  }
+
+  it("resistance coverage reduces damage from a real Bloodmire elemental threat", () => {
+    const uncappedDamage = runIncomingDamage("bloodmire_oracle", {
+      resistances: { fire: 0, cold: 0, lightning: 0, chaos: 0 },
+    })
+    const cappedDamage = runIncomingDamage("bloodmire_oracle", {
+      resistances: { fire: 0.75, cold: 0, lightning: 0.75, chaos: 0 },
+    })
+
+    expect(uncappedDamage).toBeGreaterThan(cappedDamage)
+    expect(uncappedDamage / cappedDamage).toBeGreaterThan(2)
+  })
+
+  it("armour reduces damage from the real Shatter Beast outlier", () => {
+    const unarmouredDamage = runIncomingDamage("shatter_beast", { armour: 0 })
+    const armouredDamage = runIncomingDamage("shatter_beast", { armour: 2_000 })
+
+    expect(unarmouredDamage).toBeGreaterThan(armouredDamage)
+    expect(armouredDamage).toBeGreaterThan(0)
+  })
+})
 
 describe("pack and named-elite system", () => {
   function makeZone(overrides: Partial<Zone> = {}): Zone {

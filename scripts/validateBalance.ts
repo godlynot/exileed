@@ -18,7 +18,7 @@ import { PASSIVE_TREE } from '../src/data/passiveTree.ts'
 import { CLASSES, CLASS_ROOT_MAP } from '../src/data/classes.ts'
 import { SKILLS } from '../src/data/skills.ts'
 import type { Character, ClassId, EquippedSkill, Monster } from '../src/types/game.ts'
-import type { Equipment, Item } from '../src/types/item.ts'
+import type { Equipment, Item, ItemRarity } from '../src/types/item.ts'
 
 // ---------------------------------------------------------------------------
 // Player power model — REPLACE these with real calls into your own systems
@@ -31,6 +31,7 @@ interface PowerEstimate {
   ehp: number
   armour: number
   effectiveHit: number
+  resistances: Character['resistances']
 }
 
 const SLOT_BASES: Record<keyof Equipment, string> = {
@@ -46,10 +47,10 @@ const SLOT_BASES: Record<keyof Equipment, string> = {
   ring2: 'iron_ring',
 }
 
-function buildEquipment(level: number): Equipment {
-  // Gear rarity gives extra mods; item level controls tier magnitude.
-  // Use rare gear at all levels so the validator tests the real item system.
-  const rarity: 'rare' = 'rare'
+function buildEquipment(level: number, rarity: ItemRarity = 'rare'): Equipment {
+  // Gear rarity gives extra mods; item level controls tier magnitude. The main
+  // campaign table uses rare gear, while the sensitivity report below compares
+  // it against normal and magic gear without changing the gameplay model.
   const equipment: Equipment = {
     weapon: null,
     offhand: null,
@@ -159,7 +160,7 @@ function armourMitigation(armour: number, damage: number): number {
   return armour / (armour + 5 * damage)
 }
 
-function estimatePlayerPower(level: number, threat: Monster): PowerEstimate {
+function estimatePlayerPower(level: number, threat: Monster, gearRarity: ItemRarity = 'rare'): PowerEstimate {
   const originalRandom = Math.random
   Math.random = () => 0.5
   try {
@@ -168,7 +169,7 @@ function estimatePlayerPower(level: number, threat: Monster): PowerEstimate {
     character.passivePoints = level - 1
     character.allocatedNodes = ['root_warlord']
 
-    const equipment = buildEquipment(level)
+    const equipment = buildEquipment(level, gearRarity)
 
     character = allocatePassivesBFS(character, level - 1)
     character = recalculateCharacterFromEquipment(character, equipment)
@@ -219,7 +220,7 @@ function estimatePlayerPower(level: number, threat: Monster): PowerEstimate {
             return sum + avg * (1 - Math.min(resist, DAMAGE.RESISTANCE_CAP))
           }, 0)
 
-    return { dps, ehp, armour: character.armour, effectiveHit }
+    return { dps, ehp, armour: character.armour, effectiveHit, resistances: character.resistances }
   } finally {
     Math.random = originalRandom
   }
@@ -302,6 +303,21 @@ for (const zone of ZONES) {
 }
 
 // ---------------------------------------------------------------------------
+// Survivability bands (see BALANCE.md "Survivability bands")
+//
+// - Baseline gear (normal/magic, uncapped): 8-20 hits-to-die is the pacing
+//   target for repeatable trash.
+// - Capped/rare profiles: capping a resistance (or stacking armour) is the
+//   intended gearing payoff, so those profiles may reach ~45 hits before an
+//   encounter has "no tension" at all. 45 is the ceiling, not the target.
+// ---------------------------------------------------------------------------
+const HITS_BAND = {
+  BASELINE_MIN: 8,
+  BASELINE_MAX: 20,
+  CAPPED_MAX: 45,
+} as const
+
+// ---------------------------------------------------------------------------
 // Checks
 // ---------------------------------------------------------------------------
 
@@ -327,6 +343,40 @@ for (const r of rows) {
   )
 }
 
+// Compare the same late-campaign threats across gear tiers before changing a
+// global defensive constant. A warning isolated to rare gear is an itemization
+// issue; a warning present in normal gear points toward monster tuning instead.
+const sensitivityZones = ZONES.filter(zone => zone.level >= 25 && zone.monsterIds.some(id => MONSTERS[id]?.rarity !== 'boss'))
+console.log('\n=== DEFENSIVE PROFILE SENSITIVITY ===')
+console.log(
+  `  Bands: baseline ${HITS_BAND.BASELINE_MIN}-${HITS_BAND.BASELINE_MAX} hits | capped/rare ≤ ${HITS_BAND.CAPPED_MAX} hits (gearing payoff)`
+)
+for (const zone of sensitivityZones) {
+  const pool = zone.monsterIds
+    .map(id => MONSTERS[id])
+    .filter((monster): monster is Monster => Boolean(monster))
+    .map(monster => scaleMonsterToZone(monster, zone.level))
+  const nonBoss = pool.filter(monster => monster.rarity !== 'boss')
+  if (nonBoss.length === 0) continue
+  const threat = nonBoss.reduce((a, b) => (avgDamage(a) > avgDamage(b) ? a : b))
+  const profiles = (['normal', 'magic', 'rare'] as const).map(rarity => {
+    const power = estimatePlayerPower(zone.level, threat, rarity)
+    const hitsToDie = power.ehp / Math.max(power.effectiveHit, 0.01)
+    const mitigation = power.armour / (power.armour + 5 * maxDamage(threat))
+    const cappedResistances = Object.entries(power.resistances)
+      .filter(([, value]) => value >= DAMAGE.RESISTANCE_CAP)
+      .map(([type]) => type)
+    const resistanceLabel = cappedResistances.length > 0 ? `cap:${cappedResistances.join('/')}` : 'cap:none'
+    // A profile enters the capped band once it caps any resistance (or is rare).
+    const capped = rarity === 'rare' || cappedResistances.length > 0
+    const maxHits = capped ? HITS_BAND.CAPPED_MAX : HITS_BAND.BASELINE_MAX
+    const minHits = capped ? 0 : HITS_BAND.BASELINE_MIN
+    const verdict = hitsToDie > maxHits ? 'OVER' : hitsToDie < minHits ? 'LOW' : 'ok'
+    return `${rarity} ${hitsToDie.toFixed(1)}h/${(mitigation * 100).toFixed(0)}%a/${resistanceLabel} ${verdict}`
+  })
+  console.log(`  ${zone.id.padEnd(24)} ${profiles.join(' | ')}`)
+}
+
 // 1. TTK drift — the single most important check (exclude boss-only zones).
 const trashTTKs = rows.filter(r => !r.isBossOnly).map(r => r.ttkTrash)
 const drift = trashTTKs.length > 0 ? Math.max(...trashTTKs) / Math.min(...trashTTKs) : 1
@@ -349,15 +399,18 @@ for (const r of rows) {
   if (r.ttkBoss > 120) problems.push(`${r.zone}: boss TTK ${r.ttkBoss.toFixed(0)}s > 120s — slog`)
 }
 
-// 3. Survivability window.
+// 3. Survivability window. The main table below uses the rare-gear reference
+// profile, so it is checked against the capped band: capped resistances and
+// stacked armour are the intended gearing payoff and may reach ~45 hits.
+// Baseline profiles (normal/magic, uncapped) are checked against 8-20 in the
+// sensitivity report above. Boss-only zones are endurance encounters rather
+// than repeatable trash pacing, so neither band applies to them.
 for (const r of rows) {
-  if (r.hitsToDie < 6) {
-    problems.push(`${r.zone}: dies in ${r.hitsToDie.toFixed(1)} hits — too spiky for an idle game (aim 8-20)`)
+  if (r.hitsToDie < HITS_BAND.BASELINE_MIN && !r.isBossOnly) {
+    problems.push(`${r.zone}: dies in ${r.hitsToDie.toFixed(1)} hits — too spiky for an idle game (baseline aim ${HITS_BAND.BASELINE_MIN}-${HITS_BAND.BASELINE_MAX})`)
   }
-  // Boss-only zones are endurance encounters rather than repeatable trash
-  // pacing, so the trash hits-to-die band does not apply to them.
-  if (r.hitsToDie > 40 && !r.isBossOnly) {
-    problems.push(`${r.zone}: dies in ${r.hitsToDie.toFixed(0)} hits — no tension`)
+  if (r.hitsToDie > HITS_BAND.CAPPED_MAX && !r.isBossOnly) {
+    problems.push(`${r.zone}: dies in ${r.hitsToDie.toFixed(0)} hits — no tension (capped/rare ceiling is ${HITS_BAND.CAPPED_MAX})`)
   }
 }
 

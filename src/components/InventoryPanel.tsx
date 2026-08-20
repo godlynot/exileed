@@ -18,6 +18,7 @@ export function InventoryPanel() {
   const discardItem = useGameStore(state => state.discardItem)
   const useCurrency = useGameStore(state => state.useCurrency)
   const toggleAutoSell = useGameStore(state => state.toggleAutoSell)
+  const setAutoSellMaxLevel = useGameStore(state => state.setAutoSellMaxLevel)
   const claimGemItem = useGameStore(state => state.claimGemItem)
   const convertBlankSupport = useGameStore(state => state.convertBlankSupport)
   const ownedGems = useGameStore(state => state.character.ownedGems)
@@ -59,6 +60,19 @@ export function InventoryPanel() {
             className="accent-[var(--accent-gold)]"
           />
           Auto-sell Magic
+        </label>
+        <label className="flex items-center gap-2 text-gray-300">
+          <span>Through item level</span>
+          <input
+            type="number"
+            min={0}
+            max={90}
+            value={inventory.autoSellMaxLevel}
+            onChange={event => setAutoSellMaxLevel(Number(event.target.value))}
+            aria-label="Auto-sell maximum item level"
+            className="w-14 rounded border border-[var(--border)] bg-[var(--bg-elevated)] px-1.5 py-0.5 text-center text-gray-200"
+          />
+          <span className="text-[10px] text-[var(--text-muted)]">0 = current level</span>
         </label>
       </div>
 

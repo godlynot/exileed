@@ -30,6 +30,37 @@ describe('inventory capacity', () => {
     expect(useGameStore.getState().inventory.maxSize).toBe(30)
   })
 
+  it('normalizes invalid and oversized auto-sell caps on import', () => {
+    const state = useGameStore.getState()
+    const imported = serializeSave({
+      ...state,
+      inventory: { ...state.inventory, autoSellMaxLevel: 999 },
+    })
+
+    useGameStore.getState().importSave(imported)
+
+    expect(useGameStore.getState().inventory.autoSellMaxLevel).toBe(90)
+
+    const invalidImport = serializeSave({
+      ...useGameStore.getState(),
+      inventory: { ...useGameStore.getState().inventory, autoSellMaxLevel: -4 },
+    })
+    useGameStore.getState().importSave(invalidImport)
+
+    expect(useGameStore.getState().inventory.autoSellMaxLevel).toBe(0)
+  })
+
+  it('updates the auto-sell cap through the inventory action', () => {
+    useGameStore.getState().setAutoSellMaxLevel(12.8)
+    expect(useGameStore.getState().inventory.autoSellMaxLevel).toBe(12)
+
+    useGameStore.getState().setAutoSellMaxLevel(999)
+    expect(useGameStore.getState().inventory.autoSellMaxLevel).toBe(90)
+
+    useGameStore.getState().setAutoSellMaxLevel(0)
+    expect(useGameStore.getState().inventory.autoSellMaxLevel).toBe(0)
+  })
+
   it('normalizes imported legacy capacity without dropping existing items', () => {
     const item = createItem('rusted_axe', 1, 'normal')
     const legacyState = useGameStore.getState()
@@ -76,6 +107,45 @@ describe('inventory capacity', () => {
       expect(event.slot).toBeTruthy()
       expect(event.itemLevel).toBeGreaterThan(0)
       expect(event.goldValue).toBeGreaterThan(0)
+    } finally {
+      random.mockRestore()
+    }
+  })
+
+  it('restores an auto-sold drop above the explicit level cap', () => {
+    const random = spyOn(Math, 'random').mockReturnValue(0.99)
+    try {
+      useGameStore.getState().devSpawnTestPack()
+      const armed = useGameStore.getState()
+      const front = armed.combat.currentPack[0]
+      if (!front) throw new Error('Expected the dev pack to contain a front monster')
+
+      useGameStore.setState({
+        ...armed,
+        inventory: {
+          ...armed.inventory,
+          autoSellNormal: true,
+          autoSellMagic: true,
+          autoSellMaxLevel: 1,
+        },
+        character: { ...armed.character, level: 2, special: { ...armed.character.special, alwaysHit: true } },
+        combat: {
+          ...armed.combat,
+          monster: front.monster,
+          monsterLife: 1,
+          currentPack: [{ ...front, currentLife: 1 }, ...armed.combat.currentPack.slice(1)],
+        },
+      })
+
+      useGameStore.getState().tick()
+
+      const event = useGameStore.getState().combat.events.find(candidate =>
+        candidate.type === 'itemDropped' && candidate.outcome === 'stored' && (candidate.itemLevel ?? 0) > 1,
+      )
+      expect(event?.type).toBe('itemDropped')
+      if (event?.type !== 'itemDropped') throw new Error('Expected a capped drop to be restored')
+      expect(event.itemLevel).toBeGreaterThan(1)
+      expect(useGameStore.getState().inventory.items.some(item => item.id === event.itemId)).toBe(true)
     } finally {
       random.mockRestore()
     }

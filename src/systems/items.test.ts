@@ -17,6 +17,7 @@ import {
   calculateEquipmentBonus,
   consumeGeneratedDrops,
   dropItem,
+  shouldAutoSellItem,
   RARITY_RANGE,
   MAX_PREFIXES,
   MAX_SUFFIXES,
@@ -449,6 +450,29 @@ describe('Sovereignty and Triumph respect existing prefix/suffix counts', () => 
       expect(result.affixes.length).toBe(rare.affixes.length + 1)
       expect(result.rarity).toBe('rare')
     }
+  })
+})
+
+describe('auto-sell level cap', () => {
+  const baseInventory = { autoSellNormal: true, autoSellMagic: true, autoSellMaxLevel: 0 }
+
+  it('uses the character level when the cap is zero', () => {
+    const item = createItem('rusted_axe', 10, 'normal')
+    expect(shouldAutoSellItem(item, baseInventory, 10)).toBe(true)
+    expect(shouldAutoSellItem(item, baseInventory, 9)).toBe(false)
+  })
+
+  it('respects an explicit cap without exceeding the character level', () => {
+    const item = createItem('rusted_axe', 12, 'normal')
+    expect(shouldAutoSellItem(item, { ...baseInventory, autoSellMaxLevel: 10 }, 20)).toBe(false)
+    expect(shouldAutoSellItem(item, { ...baseInventory, autoSellMaxLevel: 20 }, 15)).toBe(true)
+  })
+
+  it('never auto-sells rare or disabled rarities', () => {
+    const rare = createItem('rusted_axe', 10, 'rare')
+    const normal = createItem('rusted_axe', 10, 'normal')
+    expect(shouldAutoSellItem(rare, baseInventory, 20)).toBe(false)
+    expect(shouldAutoSellItem(normal, { ...baseInventory, autoSellNormal: false }, 20)).toBe(false)
   })
 })
 

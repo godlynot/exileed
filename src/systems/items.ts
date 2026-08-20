@@ -1,4 +1,4 @@
-import type { Affix, AffixDefinition, Equipment, EquipmentBonus, Item, ItemKind, ItemRarity, ItemSlot } from '../types/item.ts'
+import type { Affix, AffixDefinition, Equipment, EquipmentBonus, InventoryState, Item, ItemKind, ItemRarity, ItemSlot } from '../types/item.ts'
 import type { Attributes, Character, ClassId, GameState } from '../types/game.ts'
 import { BASE_ITEMS, UNIQUE_ITEMS } from '../data/items.ts'
 import { SKILLS } from '../data/skills.ts'
@@ -17,6 +17,17 @@ const generatedDrops: Item[] = []
  */
 export function consumeGeneratedDrops(): Item[] {
   return generatedDrops.splice(0, generatedDrops.length)
+}
+
+/** Returns whether a normal or magic equipment drop should be auto-sold. */
+export function shouldAutoSellItem(item: Item, inventory: Pick<InventoryState, 'autoSellNormal' | 'autoSellMagic' | 'autoSellMaxLevel'>, characterLevel: number): boolean {
+  if (item.rarity !== 'normal' && item.rarity !== 'magic') return false
+  const configuredMaxLevel = Number(inventory.autoSellMaxLevel)
+  const maxItemLevel = Number.isFinite(configuredMaxLevel) && configuredMaxLevel > 0
+    ? Math.min(characterLevel, Math.floor(configuredMaxLevel))
+    : characterLevel
+  const rarityEnabled = item.rarity === 'normal' ? inventory.autoSellNormal : inventory.autoSellMagic
+  return rarityEnabled && item.itemLevel <= maxItemLevel
 }
 
 // ── Rarity affix range invariants ──────────────────────────────────────────

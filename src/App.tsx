@@ -5,8 +5,6 @@ import { lazy, Suspense, useState, useMemo } from 'react'
 import { ClassSelection } from './components/ClassSelection.tsx'
 import { CombatScene } from './components/CombatScene.tsx'
 import { CombatLog } from './components/CombatLog.tsx'
-import { AscendancySelection } from './components/AscendancySelection.tsx'
-import { DevTools } from './components/DevTools.tsx'
 import { CharacterStats } from './components/CharacterStats.tsx'
 import { NexusRunStatus } from './components/NexusRunStatus.tsx'
 import { OfflineProgressOverlay } from './components/OfflineProgressOverlay.tsx'
@@ -19,6 +17,8 @@ const CraftingPanel = lazy(() => import('./components/CraftingPanel.tsx').then(m
 const PassiveTreePanel = lazy(() => import('./components/PassiveTreePanel.tsx').then(module => ({ default: module.PassiveTreePanel })))
 const AscendancyTree = lazy(() => import('./components/AscendancyTree.tsx').then(module => ({ default: module.AscendancyTree })))
 const SkillsPanel = lazy(() => import('./components/SkillsPanel.tsx').then(module => ({ default: module.SkillsPanel })))
+const AscendancySelection = lazy(() => import('./components/AscendancySelection.tsx').then(module => ({ default: module.AscendancySelection })))
+const DevTools = lazy(() => import('./components/DevTools.tsx').then(module => ({ default: module.DevTools })))
 import { ASCENDANCIES, TRIALS } from './data/ascendancies.ts'
 
 type Tab = 'zone' | 'inventory' | 'equipment' | 'crafting' | 'tree' | 'ascendancy' | 'skills' | 'settings'
@@ -82,7 +82,11 @@ function App() {
   }
 
   if (gamePhase === 'ascendancy-select' && !activeTrial) {
-    return <AscendancySelection />
+    return (
+      <Suspense fallback={<PanelLoading />}>
+        <AscendancySelection />
+      </Suspense>
+    )
   }
 
   const activeZone = zones.find(z => z.id === activeZoneId)

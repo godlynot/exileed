@@ -95,6 +95,30 @@ letting it trivialize incoming attacks.
 - Zealot's Creed raises the elemental cap to 85%.
 - Negative resistances are possible down to -75%.
 
+## Survivability Bands (hits-to-die)
+
+The balance validator's hits-to-die metric is `(maxLife + maxES) / average incoming hit`
+against the highest-average-damage non-boss threat in each zone. There are two explicit
+bands, and each gear profile is checked against the band that applies to it:
+
+| Profile | Band | Meaning |
+|---|---|---|
+| **Baseline** (normal/magic gear, no capped resistance) | **8–20 hits** | Trash pacing target: below 8 is too spiky for an idle game, above 20 the trash is trivial. |
+| **Capped/rare** (rare gear, or any profile with a resistance at the 75% cap) | **≤ 45 hits** | The gearing payoff: capping a resistance or stacking armour legitimately multiplies effective health. 45 is the ceiling — above it an encounter has no tension at all. |
+
+The band is two-tier by design, not by accident:
+
+- Several late-campaign threats deal **100% of their damage in a single type**
+  (`bloodmire_dredge` is pure physical; `void_touched_scribe` and `toxic_spitter` are
+  pure chaos). A single capped layer (75% chaos resistance, or high armour) therefore
+  negates the entire hit, pushing capped profiles to roughly 40–45 hits-to-die.
+- Raising monster damage to close that gap is not viable: baseline gear already sits at
+  6.7–9.8 hits in the sampled late zones, near the 8-hit floor, so higher monster damage
+  would push normal gear into the "too spiky" zone.
+- The single-type threats are intentional teaching tools (e.g. Cursed Catacombs exists
+  to teach chaos resistance). The validator's per-profile bands keep that lesson visible
+  without re-flagging the payoff as a mystery.
+
 ## Recovery
 
 - **Life regen:** 2% of max life per second (flat per tick).
@@ -210,4 +234,4 @@ Armour and evasion base stats use the same campaign curve as monster stats with 
 
 When a monster template is spawned in a zone, its stats are scaled from the template's natural level to the zone's level using the per-level multipliers above. This lets the same Act 1 trash template reappear in later Act 1 zones while remaining threatening.
 
-The current validator result is intentionally advisory: campaign trash TTK drift is 1.86x, while five late-campaign zones report roughly 44–45 average hits against the max-rare Warlord estimate and armour mitigation ranges from 35% to 85%. These are model warnings, not automatic balance failures; verify them against live combat before changing global mitigation or defensive affix values. The late-game spike tests also include deliberate monster outliers in Frostbound Peaks and Halls of Judgment.
+The current validator result is intentionally advisory: campaign trash TTK drift is 1.86x, and armour mitigation ranges from 35% to 85% (the drift advisory tracks the armour curve, not a global failure). Hits-to-die is reported per gear profile against its explicit band: baseline profiles range from 6.7–9.8 hits (within the 8–20 band except a handful of act 4–5 entry zones sitting 0.1–1.3 hits under the floor), while capped/rare profiles reach roughly 22–45 hits — inside their ≤ 45 ceiling, with Fungal Caverns at 45.5 flagged as the one zone at the ceiling. The defensive profile sensitivity report lists which resistances reach the 75% cap and marks each profile `ok` / `OVER` / `LOW` against its band. Real combat regression fixtures cover the Bloodmire Oracle elemental threat and Shatter Beast physical outlier, verifying that capped resistances and armour reduce incoming damage in the actual tick simulation. These are model warnings, not automatic balance failures; verify them against live combat before changing global mitigation, resistance, or defensive affix values. The late-game spike tests also include deliberate monster outliers in Frostbound Peaks and Halls of Judgment.
