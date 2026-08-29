@@ -397,7 +397,6 @@ export interface CombatState {
   monsterLife: number
   lastDamageDealt: number
   lastDamageTaken: number
-  combatLog: string[]
   isRespawning: boolean
   respawnTicks: number
   events: CombatEvent[]

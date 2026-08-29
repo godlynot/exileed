@@ -100,7 +100,6 @@ export function createCombatState(monster: Monster): CombatState {
     monsterLife: monster.life,
     lastDamageDealt: 0,
     lastDamageTaken: 0,
-    combatLog: [],
     isRespawning: false,
     respawnTicks: 0,
     events: [],
@@ -875,7 +874,7 @@ function hasHerald(combat: CombatState, aura: 'light' | 'gold' | 'tide' | 'silen
 export function simulateTick(state: GameState): { state: GameState; events: CombatEvent[] } {
   const events: CombatEvent[] = []
   let character: Character = { ...state.character }
-  let combat: CombatState = { ...state.combat, combatLog: [...state.combat.combatLog] }
+  let combat: CombatState = { ...state.combat }
   let currencies = { ...state.currencies }
   let zones: Zone[] = state.zones.map(z => ({ ...z }))
   let inventory = { ...state.inventory, items: [...state.inventory.items] }
