@@ -19,6 +19,65 @@ function classIcon(classId: string) {
   }
 }
 
+// ── Visual mockup: party allies on the lane (minion-system-spec.md §9.1) ──
+// Hardcoded allies so the on-lane layout can be reviewed before any combat
+// wiring. Remove/replace when real party state exists.
+interface MockAlly {
+  id: string
+  name: string
+  level: number
+  maxLife: number
+  life: number
+  icon: string
+}
+
+const MOCK_ALLIES: MockAlly[] = [
+  { id: 'ally_sentinel', name: 'Bone Sentinel', level: 29, maxLife: 2400, life: 2400, icon: '🛡️' },
+  { id: 'ally_wretch', name: 'Plague Wretch', level: 29, maxLife: 900, life: 585, icon: '🐛' },
+]
+
+const AllyCard = memo(function AllyCard({ ally, compact }: { ally: MockAlly; compact?: boolean }) {
+  const hpPercent = Math.max(0, (ally.life / ally.maxLife) * 100)
+  return (
+    <motion.div
+      layout
+      initial={{ opacity: 0, y: -8 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.35 }}
+      className="relative flex w-full flex-col items-center"
+    >
+      {/* Compact cards fit two allies + the player in the lane's 176px height */}
+      <div
+        className={`relative flex ${compact ? 'h-9 w-9' : 'h-10 w-10'} items-center justify-center rounded-full border-2 border-emerald-400/60 bg-[var(--bg-elevated)] shadow-[0_0_8px_rgba(52,211,153,0.35)]`}
+      >
+        <motion.div
+          className={compact ? 'text-base' : 'text-lg'}
+          animate={{ x: [1, -1, 1] }}
+          transition={{ repeat: Infinity, duration: 2.2, ease: 'easeInOut' }}
+        >
+          {ally.icon}
+        </motion.div>
+      </div>
+      {/* Friendly life bar — green reads as ally, mirrors monster bar styling */}
+      <div className="mt-1 w-full">
+        <div className="h-1.5 w-full overflow-hidden rounded-full border border-[var(--border)] bg-[var(--bg-primary)]">
+          <motion.div
+            className="h-full bg-gradient-to-r from-emerald-700 to-emerald-500"
+            animate={{ width: `${hpPercent}%` }}
+            transition={{ duration: 0.15 }}
+          />
+        </div>
+      </div>
+      <div
+        title={`${ally.name} · L${ally.level}`}
+        className="w-full truncate text-center text-[8px] leading-none text-emerald-200/90 mt-0.5 h-2.5"
+      >
+        {ally.name}
+      </div>
+    </motion.div>
+  )
+})
+
 /** Placeholder emoji icons until distinct monster art/silhouettes are added. */
 function monsterIcon(name: string): string {
   const n = name.toLowerCase()
@@ -258,9 +317,12 @@ export function PackLane({ character, currentPack }: PackLaneProps) {
           />
         ))}
 
-        {/* Player avatar on the left */}
+        {/* Player formation — ally mockups stacked directly above and below the player
+            (minion-system-spec.md §9.1): one column, player centered on the lane line. */}
         <div className="absolute left-4 top-1/2 -translate-y-1/2 flex flex-col items-center z-10">
-          <div className="text-5xl drop-shadow-lg">{classIcon(character.classId)}</div>
+          <AllyCard ally={MOCK_ALLIES[0]} compact />
+          <div className="text-5xl drop-shadow-lg my-0.5">{classIcon(character.classId)}</div>
+          <AllyCard ally={MOCK_ALLIES[1]} compact />
         </div>
 
         {/* Monsters — flex row, evenly distributed so icons never overlap; the front

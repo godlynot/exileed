@@ -66,7 +66,7 @@ export function CombatScene({ character, combat }: CombatSceneProps) {
 
   return (
     <div className="space-y-2">
-      {/* Main pack lane — player vs the whole pack */}
+      {/* Main pack lane — player vs the whole pack (allies render inside the lane) */}
       <PackLane character={character} currentPack={combat.currentPack} />
 
       {/* Death summary overlay */}
