@@ -68,6 +68,24 @@ describe('simulateOfflineProgress', () => {
     expect(consumeGeneratedDrops()).toHaveLength(0)
   })
 
+  it('honors the auto-sell level cap the same way the live tick does', async () => {
+    const state = createInitialState('warlord')
+    state.gamePhase = 'playing'
+    state.inventory.autoSellMaxLevel = 1
+    consumeGeneratedDrops()
+
+    const result = await simulateOfflineProgress(state, 300)
+
+    // With the cap at 1, no normal/magic equipment at item level 1 or below may
+    // be stored — combat sold them and the cap reconciliation must not let them
+    // back in (the live tick would auto-sell them too).
+    for (const item of result.state.inventory.items) {
+      if (item.kind === 'equipment' && (item.rarity === 'normal' || item.rarity === 'magic')) {
+        expect(item.itemLevel).toBeGreaterThan(1)
+      }
+    }
+  })
+
   it('reports chunk progress through the callback', async () => {
     const state = createInitialState('warlord')
     state.gamePhase = 'playing'

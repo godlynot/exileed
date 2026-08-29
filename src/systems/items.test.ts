@@ -18,6 +18,7 @@ import {
   consumeGeneratedDrops,
   dropItem,
   shouldAutoSellItem,
+  reconcileAutoSellCap,
   RARITY_RANGE,
   MAX_PREFIXES,
   MAX_SUFFIXES,
@@ -473,6 +474,37 @@ describe('auto-sell level cap', () => {
     const normal = createItem('rusted_axe', 10, 'normal')
     expect(shouldAutoSellItem(rare, baseInventory, 20)).toBe(false)
     expect(shouldAutoSellItem(normal, { ...baseInventory, autoSellNormal: false }, 20)).toBe(false)
+  })
+
+  it('reconciles drops above the configured cap back into the inventory', () => {
+    const low = createItem('rusted_axe', 5, 'magic')
+    const high = createItem('rusted_axe', 12, 'normal')
+    const storedByCombat = createItem('rusted_axe', 14, 'normal')
+    const inventory = { items: [storedByCombat], maxSize: 20, ...baseInventory, autoSellMaxLevel: 10 }
+
+    const result = reconcileAutoSellCap([low, high, storedByCombat], inventory, 15, [
+      { type: 'itemDropped', itemId: storedByCombat.id }, // combat stored this one itself
+    ])
+
+    // High-level drop restored, refund matches combat's sell value; the rest stay sold.
+    expect(result.restored.map(dropped => dropped.id)).toEqual([high.id])
+    expect(result.autoSold.map(dropped => dropped.id)).toEqual([low.id])
+    expect(result.goldRefund).toBe(Math.max(1, high.itemLevel * 2))
+  })
+
+  it('restores nothing when the cap is zero (legacy behavior) or the inventory is full', () => {
+    const item = createItem('rusted_axe', 10, 'normal')
+    const legacy = reconcileAutoSellCap([item], { items: [], maxSize: 20, ...baseInventory }, 15, [])
+    expect(legacy.restored).toEqual([])
+    expect(legacy.autoSold.map(dropped => dropped.id)).toEqual([item.id])
+
+    const full = reconcileAutoSellCap(
+      [item],
+      { items: Array.from({ length: 20 }, () => createItem('rusted_axe', 5, 'normal')), maxSize: 20, ...baseInventory, autoSellMaxLevel: 5 },
+      15,
+      [],
+    )
+    expect(full.restored).toEqual([])
   })
 })
 

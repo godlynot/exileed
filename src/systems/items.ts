@@ -30,6 +30,40 @@ export function shouldAutoSellItem(item: Item, inventory: Pick<InventoryState, '
   return rarityEnabled && item.itemLevel <= maxItemLevel
 }
 
+/**
+ * Reconciles the auto-sell level cap after combat has already applied the
+ * legacy current-level rule (combat sells any normal/magic drop at or below the
+ * character's level and credits `itemLevel * 2` gold). Returns the drops that
+ * should be restored to inventory because they exceed the configured cap, the
+ * drops that remain auto-sold, and the gold to refund for the restored ones.
+ * Both the live tick and offline simulation call this so the cap is honored
+ * identically on every loot path.
+ */
+export function reconcileAutoSellCap(
+  generatedDrops: Item[],
+  inventory: Pick<InventoryState, 'autoSellNormal' | 'autoSellMagic' | 'autoSellMaxLevel' | 'items' | 'maxSize'>,
+  characterLevel: number,
+  existingEvents: { type: string; itemId?: string }[],
+): { restored: Item[]; autoSold: Item[]; goldRefund: number } {
+  // Drops combat auto-sold under the legacy rule (and that combat did not store
+  // with an itemDropped event).
+  const autoSoldByCombat = generatedDrops
+    .filter(dropped =>
+      (dropped.rarity === 'normal' && inventory.autoSellNormal && dropped.itemLevel <= characterLevel) ||
+      (dropped.rarity === 'magic' && inventory.autoSellMagic && dropped.itemLevel <= characterLevel),
+    )
+    .filter(dropped => !existingEvents.some(event => event.type === 'itemDropped' && event.itemId === dropped.id))
+  // Restore the ones the configured cap says the player wanted to keep, up to
+  // the inventory space combat left free after storing its own drops.
+  const restored = autoSoldByCombat
+    .filter(dropped => !shouldAutoSellItem(dropped, inventory, characterLevel))
+    .slice(0, Math.max(0, inventory.maxSize - inventory.items.length))
+  const restoredIds = new Set(restored.map(dropped => dropped.id))
+  const autoSold = autoSoldByCombat.filter(dropped => !restoredIds.has(dropped.id))
+  const goldRefund = restored.reduce((total, dropped) => total + Math.max(1, dropped.itemLevel * 2), 0)
+  return { restored, autoSold, goldRefund }
+}
+
 // ── Rarity affix range invariants ──────────────────────────────────────────
 // These are the authoritative floor/ceiling for every rarity tier.
 // Any item whose affix count falls outside its rarity's range is out of spec.

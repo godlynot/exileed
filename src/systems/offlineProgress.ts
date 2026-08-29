@@ -5,7 +5,7 @@ import {
   OFFLINE_PROGRESS_MIN_SECONDS,
   TICKS_PER_SECOND,
 } from '../data/balance.ts'
-import { addProgressionDropsToInventory, consumeGeneratedDrops } from './items.ts'
+import { addProgressionDropsToInventory, consumeGeneratedDrops, reconcileAutoSellCap } from './items.ts'
 import { simulateTick } from './combat.ts'
 
 /**
@@ -69,11 +69,39 @@ export async function simulateOfflineProgress(
     const batch = Math.min(chunkTicks, totalTicks - ticksDone)
     for (let i = 0; i < batch; i++) {
       const { state: next, events: tickEvents } = simulateTick(sim)
-      consumeGeneratedDrops()
+      const generatedDrops = consumeGeneratedDrops()
+      // Honor the auto-sell level cap exactly like the live tick: combat sells
+      // drops at or below the character level, so restore any drops above the
+      // configured cap and refund their gold before the sim moves on.
+      const { restored, goldRefund } = reconcileAutoSellCap(
+        generatedDrops,
+        next.inventory,
+        next.character.level,
+        tickEvents,
+      )
       // The store normally advances tickCounter per tick; do it here so
       // periodic timers (storm ticks, DOT cadence, etc.) fire correctly.
       sim = { ...next, tickCounter: next.tickCounter + 1 }
       let events = tickEvents
+      if (restored.length > 0) {
+        sim = {
+          ...sim,
+          inventory: { ...sim.inventory, items: [...sim.inventory.items, ...restored] },
+          currencies: { ...sim.currencies, gold: Math.max(0, (sim.currencies.gold || 0) - goldRefund) },
+        }
+        const restoredEvents = restored.map(dropped => ({
+          id: `loot_restored_${dropped.id}`,
+          timestamp: Date.now(),
+          type: 'itemDropped' as const,
+          itemId: dropped.id,
+          itemName: dropped.name,
+          slot: dropped.slot,
+          itemLevel: dropped.itemLevel,
+          rarity: dropped.rarity,
+          outcome: 'stored' as const,
+        }))
+        events = [...tickEvents, ...restoredEvents]
+      }
       const killCount = events.filter(event => event.type === 'monsterDied').length
       const zone = sim.zones.find(candidate => candidate.id === sim.activeZoneId)
       if (zone && killCount > 0) {
