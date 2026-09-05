@@ -1453,4 +1453,43 @@ export const MONSTERS: Record<string, Monster> = {
       },
     ],
   },
+
+  // --- Nexus Stage 4: The Primeval Sovereign (pinnacle boss) ---
+  primeval_sovereign: {
+    id: 'primeval_sovereign',
+    name: 'The Primeval Sovereign',
+    // Spawned at T16 map level (141) via scaleMonster: life ~8.5B, phys
+    // ~400-800 plus phase-added rift-lightning up to ~530-1060. Anchored to
+    // Aurelius (Act 8, 27M @ 65) so the pinnacle sits a clear tier above the
+    // campaign's final boss.
+    level: 65,
+    life: 32000000,
+    maxLife: 32000000,
+    damage: [
+      { type: 'physical', min: 1500, max: 3000 },
+      { type: 'lightning', min: 1000, max: 2000 },
+    ],
+    attackRate: 0.9,
+    accuracy: 800,
+    evasion: 300,
+    armour: 1500,
+    experienceReward: 15000,
+    goldReward: 2500,
+    rarity: 'boss',
+    // Approved design: two phase thresholds at 50% and 25% life.
+    phases: [
+      {
+        healthPercent: 0.5,
+        statOverrides: { attackRate: 0.9 },
+        addComponents: [{ type: 'cold', min: 800, max: 1600 }],
+        attackRateMultiplier: 1.2,
+      },
+      {
+        healthPercent: 0.25,
+        statOverrides: { attackRate: 0.9 },
+        addComponents: [{ type: 'chaos', min: 1200, max: 2400 }],
+        attackRateMultiplier: 1.4,
+      },
+    ],
+  },
 }

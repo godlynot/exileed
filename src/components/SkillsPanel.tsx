@@ -5,6 +5,27 @@ import { TICKS_PER_SECOND } from '../data/balance.ts'
 import { SUPPORTS } from '../data/supports.ts'
 import { gemXpForNextLevel } from '../systems/gems.ts'
 import { skillDisplayStats } from '../systems/combat.ts'
+import { MINIONS } from '../data/minions.ts'
+import { minionStatPreview } from '../systems/minions.ts'
+
+/** Summon-skill stat preview: the minion's stats at the player's level (spec §9.2). */
+function MinionStatPreviewBlock({ defId, level }: { defId: string; level: number }) {
+  const def = MINIONS[defId]
+  if (!def) return null
+  const preview = minionStatPreview(def, level)
+  return (
+    <div className="mt-1 rounded border border-emerald-900/50 bg-emerald-950/20 p-2 text-[11px] text-emerald-200/90">
+      <div className="font-medium text-emerald-300">
+        Summons: {def.name} <span className="text-emerald-500/80">(cap {def.minionCap})</span>
+      </div>
+      <div className="mt-0.5 text-emerald-200/70">
+        {preview.maxLife} life{preview.maxEnergyShield > 0 ? ` · ${preview.maxEnergyShield} ES` : ''} ·{' '}
+        {preview.attackMin}–{preview.attackMax} {preview.damageType} @ {preview.attackRate.toFixed(2)}/s
+      </div>
+      <div className="text-emerald-400/60">{def.description}</div>
+    </div>
+  )
+}
 
 export function SkillsPanel() {
   const character = useGameStore(state => state.character)
@@ -17,7 +38,8 @@ export function SkillsPanel() {
   const [selectedSkillSlot, setSelectedSkillSlot] = useState<number | null>(null)
   const [selectedSupportSlot, setSelectedSupportSlot] = useState<{ skill: number; support: number } | null>(null)
 
-  const ownedSkillIds = character.ownedGems.filter(gem => !!SKILLS[gem.id]).map(gem => gem.id)
+  // Minion-only skills never appear in the player's picker (minion spec §3.2).
+  const ownedSkillIds = character.ownedGems.filter(gem => !!SKILLS[gem.id] && !SKILLS[gem.id].minionOnly).map(gem => gem.id)
   const ownedSupportIds = character.ownedGems.filter(gem => !!SUPPORTS[gem.id]).map(gem => gem.id)
 
   return (
@@ -49,6 +71,9 @@ export function SkillsPanel() {
                       computed.cooldownTicks / TICKS_PER_SECOND
                     ).toFixed(1)}s cooldown
                   </div>
+                  {skill.summons && MINIONS[skill.summons.minionDefId] && (
+                    <MinionStatPreviewBlock defId={skill.summons.minionDefId} level={character.level} />
+                  )}
                   {(() => {
                     const gem = character.ownedGems.find(g => g.id === skill.id)
                     if (!gem) return null
@@ -122,6 +147,9 @@ export function SkillsPanel() {
                   >
                     <div className="text-sm text-gray-200">{skill.name} {owned ? '' : '(not owned)'}</div>
                     <div className="text-xs text-gray-500">{skill.tags.join(' · ')}</div>
+                    {skill.summons && MINIONS[skill.summons.minionDefId] && owned && (
+                      <MinionStatPreviewBlock defId={skill.summons.minionDefId} level={character.level} />
+                    )}
                   </button>
                 )
               })}

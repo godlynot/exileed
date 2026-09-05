@@ -7,6 +7,8 @@ import {
 } from '../data/balance.ts'
 import { addProgressionDropsToInventory, consumeGeneratedDrops, reconcileAutoSellCap } from './items.ts'
 import { simulateTick } from './combat.ts'
+import { syncPartyState } from './party.ts'
+import { reviveAllSummons } from './minions.ts'
 
 /**
  * How many whole seconds of offline time to credit, given the last save time.
@@ -149,8 +151,15 @@ export async function simulateOfflineProgress(
   const goldGained = Math.max(0, (sim.currencies['gold'] ?? 0) - startGold)
   const levelsGained = Math.max(0, sim.character.level - startLevel)
 
+  // Revive-on-claim (minion spec §10.2, D1a): dead minions were "away" too —
+  // their respawn timers already elapsed during offline time, and they return
+  // at the character's post-sim level like a fresh cast would.
+  sim = { ...sim, character: reviveAllSummons(sim.character) }
+
   return {
-    state: { ...sim, combat: { ...sim.combat, events: lastEvents } },
+    // Party set mirror (M0): the offline sim discards per-tick party state, so
+    // rebuild it once from the final character before handing the result back.
+    state: syncPartyState({ ...sim, combat: { ...sim.combat, events: lastEvents } }),
     summary: {
       seconds: Math.floor(ticksDone / TICKS_PER_SECOND),
       xpGained,

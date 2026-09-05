@@ -13,6 +13,9 @@ export interface Resistances {
   chaos: number
 }
 
+/** A Herald aura id, as selected by proclaimHerald / the herald_k3 keystone. */
+export type HeraldAuraId = 'light' | 'gold' | 'tide' | 'silence' | 'storms' | 'judgment'
+
 export interface CharacterClass {
   id: string
   name: string
@@ -69,7 +72,7 @@ export interface PassiveSpecialEffects {
   foreseenDoom?: boolean
   inevitability?: boolean
   perfectCalculation?: boolean
-  proclaimHerald?: 'light' | 'gold' | 'tide' | 'silence' | 'storms' | 'judgment' | null
+  proclaimHerald?: HeraldAuraId | null
   unwaveringDeclaration?: boolean
   twinHeralds?: boolean
   resonantTruth?: boolean
@@ -129,6 +132,10 @@ export interface Character {
   // Equipment-derived utility stats
   damageVsBossesPercent: number
   goldFindPercent: number
+  // Total increased movement speed as a fraction (0.15 = +15%), accumulated
+  // from gear + passives. Base speed and the increased-pool cap live in
+  // MOVEMENT (balance.ts) and are applied by effectiveMovementSpeed.
+  movementSpeed: number
   // Ailment proc chances from gear
   chanceToBleed: number
   chanceToShock: number
@@ -159,6 +166,9 @@ export interface Character {
   keystoneChoices: Record<string, string>
   // Ascendancy points earned from trials (8 total)
   ascendancyPoints: number
+  // Summoned minions: the persisted loadout. Live party members are rebuilt
+  // from this every tick by the resolver (minion spec §2.2/§8.2).
+  summons: CharacterSummon[]
   // Dev/debug overrides that persist across tick recalculation
   devOverrides?: Partial<Character>
 }
@@ -283,6 +293,9 @@ export interface NexusState {
   packsCleared: number
   // One-time Stage 3 milestone rewards already granted, stored by tier.
   completedTierRewards: number[]
+  // Nexus Stage 4: the Primeval Sovereign arena unlocks on the first T16 map
+  // clear and stays unlocked (repeatable thereafter).
+  sovereignUnlocked: boolean
 }
 
 export type DamageType = 'physical' | 'lightning' | 'fire' | 'cold' | 'chaos'
@@ -343,7 +356,8 @@ export type CombatEvent =
   | { id: string; timestamp: number; type: 'packSeeded'; size: number; hasElite: boolean; zoneId: string }
   | { id: string; timestamp: number; type: 'eliteSpawned'; monsterId: string; monsterType: string; level: number }
   | { id: string; timestamp: number; type: 'packCleared'; size: number }
-  | { id: string; timestamp: number; type: 'hitLanded'; source: 'player' | 'monster'; targetId: string; damage: number; damageType: DamageType; crit: boolean }
+  | { id: string; timestamp: number; type: 'travelStarted'; distance: number; durationTicks: number }
+  | { id: string; timestamp: number; type: 'hitLanded'; source: 'player' | 'monster' | 'minion'; targetId: string; damage: number; damageType: DamageType; crit: boolean; sourceId?: string }
   | { id: string; timestamp: number; type: 'hitAvoided'; source: 'player' | 'monster'; targetId: string; reason: 'evaded' | 'missed' }
   | { id: string; timestamp: number; type: 'monsterDied'; monsterId: string; monsterType: string }
   | { id: string; timestamp: number; type: 'playerDied' }
@@ -367,6 +381,8 @@ export type CombatEvent =
   | { id: string; timestamp: number; type: 'zoneProgress'; current: number; total: number }
   | { id: string; timestamp: number; type: 'bossSpawned'; bossId: string }
   | { id: string; timestamp: number; type: 'bossDefeated'; bossId: string }
+  // Nexus Stage 4: a phased boss crossed a health threshold and shifted stats.
+  | { id: string; timestamp: number; type: 'bossPhaseChanged'; bossId: string; phaseIndex: number; totalPhases: number }
   | { id: string; timestamp: number; type: 'ailmentApplied'; targetId: string; ailmentType: AilmentInstance['type'] }
   | { id: string; timestamp: number; type: 'ailmentExpired'; targetId: string; ailmentType: AilmentInstance['type'] }
   | { id: string; timestamp: number; type: 'dotTick'; targetId: string; source: AilmentInstance['source']; damage: number; ailmentType: AilmentInstance['type'] }
@@ -375,6 +391,66 @@ export type CombatEvent =
   | { id: string; timestamp: number; type: 'delayedDamageTick'; targetId: string; damage: number }
   | { id: string; timestamp: number; type: 'gemLeveledUp'; gemId: string; gemName: string; newLevel: number }
   | { id: string; timestamp: number; type: 'bandHit'; skillName: string; targetCount: number }
+  // M2 minion lifecycle events
+  | { id: string; timestamp: number; type: 'minionSpawned'; minionId: string; minionType: string; level: number }
+  | { id: string; timestamp: number; type: 'minionDied'; minionId: string; minionType: string }
+  | { id: string; timestamp: number; type: 'minionRevived'; minionId: string; minionType: string; level: number }
+  | { id: string; timestamp: number; type: 'summonBlocked'; minionType: string; reason: 'capReached' }
+
+// ---------------------------------------------------------------------------
+// PARTY SET (M0 foundation: player + future minions)
+// ---------------------------------------------------------------------------
+export type PartyRole = 'player' | 'minion'
+
+// Per-member effects resolved from the party set each tick (Herald auras,
+// Marshal armies). Mirrored from character.special so set-wide hooks have one
+// read site; with zero minions these equal what the player gets today.
+export interface PartyMemberEffects {
+  herald: string[]
+  army: string | null
+  momentumStacks: number
+}
+
+export interface PartyMember {
+  id: string            // 'player_1' for the player, `minion_<defId>_<n>` for minions
+  role: PartyRole
+  name: string
+  level: number
+  // Combat stats (resolved once per tick by resolveParty)
+  maxLife: number
+  life: number
+  maxEnergyShield: number
+  energyShield: number
+  armour: number
+  evasion: number
+  accuracy: number
+  resistances: Resistances
+  // Offense (minions reuse the skill pipeline in later phases)
+  attack: {
+    skillId: string
+    attackRate: number
+    damageEffectiveness: number
+    flatDamage: { min: number; max: number; type: DamageType }
+  }
+  // Source bookkeeping
+  source: { type: 'skill' | 'unique' | 'ascendancy'; id: string }
+  minionDefId?: string
+  alive: boolean
+  // Death/resummon (minions only; 0 for the player)
+  respawnTicksRemaining: number
+  // Party-set effects resolved from the character's ascendancy state
+  activeEffects: PartyMemberEffects
+}
+
+/** Persisted summon entry on the character (minion spec §2.2). */
+export interface CharacterSummon {
+  minionDefId: string
+  level: number
+  xp: number
+  alive: boolean
+  // Ticks remaining until auto-revive after death (spec decision D1a).
+  respawnTicksRemaining: number
+}
 
 export interface PackMember {
   id: string
@@ -382,6 +458,9 @@ export interface PackMember {
   currentLife: number
   maxLife: number
   slot: number
+  // Stage 1 spatial: world position at seed time (transient; reset on load —
+  // save schema carries nothing positional).
+  position: { x: number; y: number }
 }
 
 export interface DeathSummary {
@@ -429,6 +508,32 @@ export interface CombatState {
   packNamedEliteCount: number
   // Live array of monsters currently alive in this pack
   currentPack: PackMember[]
+  // Party set (player + future minions), rebuilt every tick by resolveParty.
+  // Not persisted; same pattern as currentPack.
+  party: {
+    members: PartyMember[]
+    ticksSinceAnyMemberHit: number
+  }
+  // M3: who dealt the most recent killing damage — gates the reward stream
+  // (minion kills grant nothing; minion spec §5.4).
+  lastDamageSource: 'player' | 'minion'
+  // M3: per-minion-instance attack cooldown counters (ticks until next attack).
+  minionAttackCooldowns: Record<string, number>
+  // Stage 1 spatial combat. All transient: positions reset on load and the sim
+  // re-derives them; the renderer only reads these (it never writes).
+  // 'engaged' = fighting the pack at `waypoint`; 'traveling' = walking to the
+  // next pack with no attacks in either direction (momentum, regen, DOTs and
+  // ES recharge keep ticking on their normal timers).
+  phase: 'engaged' | 'traveling'
+  travelTicksRemaining: number
+  travelDurationTicks: number
+  // Party (currently just the player) world position in world units.
+  partyPosition: { x: number; y: number }
+  // Next-pack waypoint while traveling; the current pack's position while engaged.
+  waypoint: { x: number; y: number }
+  // Nexus Stage 4: how many phase thresholds a phased boss has crossed this
+  // encounter. Drives the bossPhaseChanged event + renderer phase banner.
+  bossPhaseIndex: number
 }
 
 export type NodeType = 'small' | 'notable' | 'keystone' | 'root'
@@ -452,6 +557,8 @@ export type StatKey =
   // Resistances
   | 'flat_fire_res' | 'flat_cold_res' | 'flat_lightning_res' | 'flat_chaos_res'
   | 'all_res_percent'
+  // Increased utility
+  | 'inc_movement_speed_percent'
   // Keystone hooks
   | 'special:juggernauts_stance' | 'special:perfect_aim' | 'special:elemental_dominion'
   | 'special:iron_reservation' | 'special:zealots_creed' | 'special:vengeful_resolve'
@@ -472,6 +579,7 @@ export const STAT_KEYS: StatKey[] = [
   'inc_phys_damage_percent', 'inc_spell_damage_percent', 'inc_ele_damage_percent',
   'inc_attack_speed_percent', 'inc_cast_speed_percent', 'inc_crit_chance_percent', 'inc_crit_multi_percent',
   'inc_accuracy_percent',
+  'inc_movement_speed_percent',
   'inc_life_percent', 'inc_es_percent', 'inc_armour_percent', 'inc_evasion_percent',
   'es_recharge_rate_percent', 'phys_reduction_percent',
   'flat_fire_res', 'flat_cold_res', 'flat_lightning_res', 'flat_chaos_res',
@@ -559,6 +667,9 @@ export type SkillTag =
   | 'nearRange'
   | 'farRange'
   | 'allRange'
+  // Minion-tag: marks skills that only minions cast. Never appears in the
+  // player's skill picker or gem-drop pool (minion spec §3.2).
+  | 'minion'
 
 export interface AilmentSpec {
   type: 'poison' | 'bleed' | 'burn'
@@ -579,6 +690,12 @@ export interface Skill {
   damageEffectiveness: number
   targeting: 'single' | 'pack'
   appliesAilment?: AilmentSpec
+  // Set on summon skills: casting spawns/renews the minion instead of dealing
+  // damage (minion spec §4.1). Summon skills deal no damage themselves.
+  summons?: { minionDefId: string }
+  // True for minion-cast-only attack skills: excluded from the player's skill
+  // picker, gem drops, and equip path.
+  minionOnly?: boolean
 }
 
 export interface Support {

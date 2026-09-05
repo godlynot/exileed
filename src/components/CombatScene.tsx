@@ -6,7 +6,8 @@ import { useGameStore } from '../store/gameStore.ts'
 import { rarityTextClass } from '../types/item.ts'
 import { CombatEffects } from './CombatEffects.tsx'
 import { DeathSummaryPanel } from './DeathSummaryPanel.tsx'
-import { PackLane } from './PackLane.tsx'
+import { PackMap } from './PackMap.tsx'
+import { MinionBar } from './MinionBar.tsx'
 
 interface CombatSceneProps {
   character: Character
@@ -66,8 +67,12 @@ export function CombatScene({ character, combat }: CombatSceneProps) {
 
   return (
     <div className="space-y-2">
-      {/* Main pack lane — player vs the whole pack (allies render inside the lane) */}
-      <PackLane character={character} currentPack={combat.currentPack} />
+      {/* Main spatial map — the player walks pack to pack; the sim owns time and position,
+          this view only projects sim state (no layout helpers, no overlap tests here). */}
+      <PackMap character={character} combat={combat} partyMembers={combat.party?.members ?? []} />
+
+      {/* Minion detail bar — one card per summon (minion-system-spec.md §9.1) */}
+      <MinionBar character={character} combat={combat} />
 
       {/* Death summary overlay */}
       {!character.isAlive && combat.deathSummary && <DeathSummaryPanel combat={combat} />}

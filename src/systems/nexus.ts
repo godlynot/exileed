@@ -10,6 +10,28 @@ export const NEXUS_BASE_PACKS = 3
 export const NEXUS_RIFT_CRYSTAL_DROP_CHANCE = 0.1
 export const NEXUS_MAP_SUSTAIN_CHANCE = 0.5
 
+// Nexus Stage 4: the Primeval Sovereign — pinnacle boss arena.
+export const SOVEREIGN_MONSTER_ID = 'primeval_sovereign'
+export const SOVEREIGN_ZONE_ID = 'primeval_sanctum'
+export const SOVEREIGN_RIFT_CRYSTAL_REWARD = 25
+
+/**
+ * Stage 4: the first T16 map clear grants the Sovereign arena — permanently.
+ * Pure helper so the unlock is unit-testable; simulateTick calls this when a
+ * map completes and applies the returned nexus + zones.
+ */
+export function grantSovereignUnlock(
+  nexus: NexusState,
+  zones: Zone[],
+): { nexus: NexusState; zones: Zone[]; unlocked: boolean } {
+  if (nexus.sovereignUnlocked) return { nexus, zones, unlocked: false }
+  return {
+    nexus: { ...nexus, sovereignUnlocked: true },
+    zones: zones.map(zone => (zone.id === SOVEREIGN_ZONE_ID ? { ...zone, unlocked: true } : zone)),
+    unlocked: true,
+  }
+}
+
 // Stage 3 milestone rewards: first clear of these high-water tiers grants a
 // one-time Rift Crystal bonus. The final tier gets a larger capstone reward.
 export const NEXUS_TIER_REWARD_MILESTONES = [

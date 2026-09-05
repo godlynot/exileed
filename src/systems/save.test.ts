@@ -18,10 +18,10 @@ describe('save normalization', () => {
       character: createInitialState('warlord').character,
       nexus: undefined,
     })) as unknown as {
-      nexus: { maps: unknown[]; activeMapId: string | null; packsCleared: number; completedTierRewards: number[] }
+      nexus: { maps: unknown[]; activeMapId: string | null; packsCleared: number; completedTierRewards: number[]; sovereignUnlocked: boolean }
     }
 
-    expect(loaded.nexus).toEqual({ maps: [], activeMapId: null, packsCleared: 0, completedTierRewards: [] })
+    expect(loaded.nexus).toEqual({ maps: [], activeMapId: null, packsCleared: 0, completedTierRewards: [], sovereignUnlocked: false })
   })
 
   it('does not persist runtime-only offline fields', () => {
@@ -53,7 +53,7 @@ describe('save normalization', () => {
       currencies: { gold: 10 },
     }))
 
-    expect(legacy?.nexus).toEqual({ maps: [], activeMapId: null, packsCleared: 2, completedTierRewards: [] })
+    expect(legacy?.nexus).toEqual({ maps: [], activeMapId: null, packsCleared: 2, completedTierRewards: [], sovereignUnlocked: false })
     expect(legacy?.currencies.rift_crystal).toBe(0)
   })
 

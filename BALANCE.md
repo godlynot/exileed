@@ -170,12 +170,27 @@ Gems gain XP on every hit. XP is granted to the skill gem and all linked support
 
 ## Support Slot Milestones
 
-Support slot count grows with campaign completion, not trials:
+Support slot count grows with campaign completion, not trials (the campaign has 8 acts):
 
 - **Start:** 2 support slots per skill
 - **Act 3 complete:** 3 support slots per skill
 - **Act 6 complete:** 4 support slots per skill
-- **Act 9 complete:** 5 support slots per skill (cap)
+- **Act 8 complete:** 5 support slots per skill (cap)
+
+Both live play (`store/gameStore.ts`) and offline simulation (`systems/combat.ts`) read the same `supportSlotCountForCompletedActs` helper in `src/data/balance.ts`.
+
+## Movement & Travel (Stage 1 spatial)
+
+Travel between packs is a sim phase with a deterministic tick duration, so offline progress simulates it identically to live play. All constants live in `MOVEMENT` (`src/data/balance.ts`):
+
+- **BASE_SPEED:** 4 world units per tick at baseline.
+- **BASE_TRAVEL_DISTANCE:** 20 world units between pack waypoints, ±20% jitter (`TRAVEL_DISTANCE_JITTER`), producing 4–6 ticks (1.6–2.4s) per travel beat at 2.5 ticks/sec.
+- **INCREASED_CAP:** +100% hard cap on the total increased movement-speed pool (gear rolls + passive `%`). Movement speed raises packs/hour directly (a clear-rate stat), so the pool is capped; Momentum/Breakneck action-speed multiplies **after** the cap via `effectiveMovementSpeed`.
+- Sources of the increased pool: `movement_speed` affix (Swift, boots/belt) and `inc_movement_speed_percent` passives.
+- During `'traveling'` no attacks land in either direction, but regen, ES recharge, DOTs, and Momentum decay keep ticking on their normal timers.
+- **Boss arenas (Stage 2):** zones whose entire monster pool is boss-rarity (act-end arenas, `killsRequired: 1`) seed solo encounters — pack size is fixed at 1 and the boss stands `BOSS_ARENA_OFFSET_Y` (6 units) north of the travel waypoint (`src/systems/spatial.ts`). This is a pacing rule, not a stat change: bosses are hand-tuned templates and `damageVsBossesPercent` is unchanged.
+- **Elite-led formations (Stage 3):** packs containing a named elite seed with the elite at the front of the engagement order (`leadWithElite`, `src/systems/spatial.ts`), standing on the waypoint axis. Ordering only — elite stat rolls, aura effects, and drop chances are unchanged, so encounter pacing math is unaffected.
+- **Swarm packs (Stage 4):** zones whose monster pool contains a swarm-tagged template (`src/data/swarmMonsters.ts`: `cinder_swarm`, `crypt_rat`) engage oversized packs of 4–8 in a tight wedge formation. Swarm members keep their low-life, fast-attack templates; pack sizing is the only change, so a swarm trades pack quality for pack quantity and AoE range bands (which cap at 3/2 targets) become the efficient clear.
 
 ## Ascendancy Tuning
 

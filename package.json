@@ -10,7 +10,8 @@
     "test": "bun test",
     "validate:tree": "bun scripts/validateTree.ts",
     "validate:ascendancies": "bun scripts/validateAscendancies.ts",
-    "validate:balance": "bun scripts/validateBalance.ts"
+    "validate:balance": "bun scripts/validateBalance.ts",
+    "smoke:spatial": "bun scripts/spatialSmoke.ts"
   },
   "dependencies": {
     "autoprefixer": "^10.5.4",

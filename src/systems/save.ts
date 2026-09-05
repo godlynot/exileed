@@ -3,9 +3,11 @@ import type { GameState, MapAffix, NexusMap } from '../types/game.ts'
 import { MAP_AFFIXES_BY_ID } from '../data/mapAffixes.ts'
 import { SKILLS } from '../data/skills.ts'
 import { SUPPORTS } from '../data/supports.ts'
+import { MINIONS } from '../data/minions.ts'
+import { MINION } from '../data/balance.ts'
 import { clampNexusTier, nexusMapChargesForTier, nexusTierLevel } from './nexus.ts'
 
-export const SAVE_VERSION = 5
+export const SAVE_VERSION = 6
 export const SAVE_KEY = 'riftidler_save_v4'
 
 const MAX_SKILL_SLOTS = 4
@@ -58,6 +60,29 @@ function normalizeEquippedSkills(value: unknown, supportSlotCount: number): Game
   })
 }
 
+function normalizeSummons(value: unknown): GameState['character']['summons'] {
+  if (!Array.isArray(value)) return []
+  const seen = new Set<string>()
+  const normalized: GameState['character']['summons'] = []
+  for (const candidate of value) {
+    if (!candidate || typeof candidate !== 'object') continue
+    const raw = candidate as { minionDefId?: unknown; level?: unknown; xp?: unknown; alive?: unknown; respawnTicksRemaining?: unknown }
+    if (typeof raw.minionDefId !== 'string' || !MINIONS[raw.minionDefId] || seen.has(raw.minionDefId)) continue
+    seen.add(raw.minionDefId)
+    if (normalized.length >= MINION.MAX_SUMMONS_TOTAL) break
+    normalized.push({
+      minionDefId: raw.minionDefId,
+      level: typeof raw.level === 'number' && Number.isFinite(raw.level) ? Math.max(1, Math.floor(raw.level)) : 1,
+      xp: typeof raw.xp === 'number' && Number.isFinite(raw.xp) ? Math.max(0, Math.floor(raw.xp)) : 0,
+      alive: raw.alive === true,
+      respawnTicksRemaining: typeof raw.respawnTicksRemaining === 'number' && Number.isFinite(raw.respawnTicksRemaining)
+        ? Math.max(0, Math.floor(raw.respawnTicksRemaining))
+        : 0,
+    })
+  }
+  return normalized
+}
+
 function normalizeCharacterData(value: unknown): GameState['character'] | null {
   if (!value || typeof value !== 'object') return null
   const character = value as GameState['character']
@@ -69,6 +94,7 @@ function normalizeCharacterData(value: unknown): GameState['character'] | null {
     supportSlotCount,
     ownedGems: normalizeGemProgress(character.ownedGems),
     equippedSkills: normalizeEquippedSkills(character.equippedSkills, supportSlotCount),
+    summons: normalizeSummons(character.summons),
     keystoneChoices: character.keystoneChoices && typeof character.keystoneChoices === 'object'
       ? character.keystoneChoices
       : {},
@@ -77,10 +103,10 @@ function normalizeCharacterData(value: unknown): GameState['character'] | null {
 
 function normalizeNexusState(value: unknown): GameState['nexus'] {
   if (!value || typeof value !== 'object') {
-    return { maps: [], activeMapId: null, packsCleared: 0, completedTierRewards: [] }
+    return { maps: [], activeMapId: null, packsCleared: 0, completedTierRewards: [], sovereignUnlocked: false }
   }
 
-  const raw = value as { maps?: unknown; activeMapId?: unknown; packsCleared?: unknown; completedTierRewards?: unknown }
+  const raw = value as { maps?: unknown; activeMapId?: unknown; packsCleared?: unknown; completedTierRewards?: unknown; sovereignUnlocked?: unknown }
   const maps: NexusMap[] = Array.isArray(raw.maps)
     ? raw.maps.flatMap(candidate => {
         if (!candidate || typeof candidate !== 'object') return []
@@ -126,6 +152,7 @@ function normalizeNexusState(value: unknown): GameState['nexus'] {
     activeMapId: typeof raw.activeMapId === 'string' && maps.some(map => map.id === raw.activeMapId)
       ? raw.activeMapId
       : null,
+    sovereignUnlocked: raw.sovereignUnlocked === true,
     packsCleared: typeof raw.packsCleared === 'number' && Number.isFinite(raw.packsCleared)
       ? Math.max(0, Math.floor(raw.packsCleared))
       : 0,
@@ -160,6 +187,8 @@ function migrateSave(parsed: Record<string, unknown>): Partial<GameState> {
   if (character.ownedGems === undefined) character.ownedGems = []
   if (character.supportSlotCount === undefined) character.supportSlotCount = 2
   if (character.keystoneChoices === undefined) character.keystoneChoices = {}
+  // M2 (save v6): persisted summon loadout
+  if (character.summons === undefined) character.summons = []
   if (character.ascendancyPoints === undefined) {
     // derive from legacy trial flags
     character.ascendancyPoints =
@@ -184,11 +213,29 @@ function migrateSave(parsed: Record<string, unknown>): Partial<GameState> {
     if (combat.currentPack === undefined) combat.currentPack = []
     if (combat.packSizeRemaining === undefined) combat.packSizeRemaining = 0
     if (combat.packNamedEliteCount === undefined) combat.packNamedEliteCount = 0
+    // Party set (M0): rebuilt from summons by the resolver; old saves normalize to an empty set.
+    if (combat.party === undefined) combat.party = { members: [], ticksSinceAnyMemberHit: 0 }
+    // M3 minion combat state
+    if (combat.lastDamageSource === undefined) combat.lastDamageSource = 'player'
+    if (combat.minionAttackCooldowns === undefined) combat.minionAttackCooldowns = {}
+    // Stage 1 spatial combat: nothing positional is saved (spec §7). Spatial
+    // fields on old saves (or a mid-travel save) normalize to a clean engaged
+    // state with a cleared pack — simulateTick re-derives travel on the next
+    // tick. No SAVE_VERSION bump: the schema carries no new persisted data.
+    if (combat.phase === undefined) combat.phase = 'engaged'
+    if (combat.travelTicksRemaining === undefined) combat.travelTicksRemaining = 0
+    if (combat.travelDurationTicks === undefined) combat.travelDurationTicks = 0
+    if (combat.partyPosition === undefined) combat.partyPosition = { x: 0, y: 0 }
+    if (combat.waypoint === undefined) combat.waypoint = { x: 0, y: 0 }
+    combat.phase = 'engaged'
+    combat.travelTicksRemaining = 0
+    combat.travelDurationTicks = 0
+    combat.currentPack = []
   }
 
   // Nexus: ensure the nexus state and rift_crystal currency exist on old saves.
   if (!state.nexus) {
-    state.nexus = { maps: [], activeMapId: null, packsCleared: 0, completedTierRewards: [] }
+    state.nexus = { maps: [], activeMapId: null, packsCleared: 0, completedTierRewards: [], sovereignUnlocked: false }
   }
   if (state.currencies) {
     const currencies = state.currencies as Record<string, unknown>

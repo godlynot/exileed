@@ -122,3 +122,46 @@ textarea:focus-visible {
 .scrollbar-thin::-webkit-scrollbar-thumb:hover {
   background: var(--accent-gold-dim);
 }
+
+/* ── Stage 1 spatial map (PackMap.tsx) ─────────────────────────────────── */
+
+/* Ground texture: a faint grid over panel background. While traveling, the
+   grid scrolls SOUTH so the party reads as walking north toward the next
+   waypoint. Sim owns the phase; CSS only decorates it. */
+.map-ground {
+  background-image:
+    linear-gradient(rgba(227, 183, 91, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(227, 183, 91, 0.05) 1px, transparent 1px);
+  background-size: 40px 40px;
+  background-position: 0 0;
+}
+
+.map-travel .map-ground {
+  animation: map-ground-scroll 0.8s linear infinite;
+}
+
+@keyframes map-ground-scroll {
+  from {
+    background-position: 0 0;
+  }
+  to {
+    background-position: 0 40px;
+  }
+}
+
+/* Destination waypoint: pulsing gold dot marking the next pack's spawn point. */
+.map-waypoint-pulse {
+  animation: map-waypoint-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes map-waypoint-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(227, 183, 91, 0.55);
+    opacity: 0.9;
+  }
+  50% {
+    box-shadow: 0 0 0 8px rgba(227, 183, 91, 0);
+    opacity: 1;
+  }
+}

@@ -6,6 +6,10 @@ import {
   NEXUS_MAX_TIER,
   NEXUS_MONSTER_POOL,
   NEXUS_TIER_REWARD_MILESTONES,
+  SOVEREIGN_MONSTER_ID,
+  SOVEREIGN_RIFT_CRYSTAL_REWARD,
+  SOVEREIGN_ZONE_ID,
+  grantSovereignUnlock,
   nexusTierCompletionRewardForTier,
   clampNexusTier,
   createNexusMap,
@@ -47,6 +51,7 @@ function makeNexus(overrides: Partial<NexusState> = {}): NexusState {
     activeMapId: null,
     packsCleared: 0,
     completedTierRewards: [],
+    sovereignUnlocked: false,
     ...overrides,
   };
 }
@@ -249,6 +254,63 @@ describe("Nexus Stage 3 tier rewards", () => {
     expect(second.completedTier).toBeNull()
     expect(second.nexus.completedTierRewards).toEqual([5])
   })
+})
+
+// --- Stage 4: the Primeval Sovereign (pinnacle boss arena) ---
+
+describe("Nexus Stage 4 Primeval Sovereign", () => {
+  it("defines the approved pinnacle constants and data", () => {
+    expect(SOVEREIGN_MONSTER_ID).toBe("primeval_sovereign");
+    expect(SOVEREIGN_ZONE_ID).toBe("primeval_sanctum");
+    expect(SOVEREIGN_RIFT_CRYSTAL_REWARD).toBe(25);
+
+    const sanctum = ZONES.find(zone => zone.id === SOVEREIGN_ZONE_ID);
+    expect(sanctum).toBeDefined();
+    expect(sanctum!.unlocked).toBe(false); // locked until the first T16 clear
+    expect(sanctum!.monsterIds).toEqual([SOVEREIGN_MONSTER_ID]);
+    expect(sanctum!.killsRequired).toBe(1);
+
+    const boss = MONSTERS[SOVEREIGN_MONSTER_ID];
+    expect(boss?.rarity).toBe("boss");
+    // Approved design: two phase thresholds at 50% and 25% life.
+    expect(boss?.phases?.map(phase => phase.healthPercent)).toEqual([0.5, 0.25]);
+  });
+
+  it("grants the pinnacle arena permanently on the first T16 clear", () => {
+    const zones = ZONES.map(zone => ({ ...zone }));
+    const result = grantSovereignUnlock(makeNexus(), zones);
+
+    expect(result.unlocked).toBe(true);
+    expect(result.nexus.sovereignUnlocked).toBe(true);
+    const sanctum = result.zones.find(zone => zone.id === SOVEREIGN_ZONE_ID);
+    expect(sanctum?.unlocked).toBe(true);
+    // Other zones are untouched.
+    expect(result.zones.filter(zone => zone.id !== SOVEREIGN_ZONE_ID && zone.unlocked))
+      .toEqual(zones.filter(zone => zone.id !== SOVEREIGN_ZONE_ID && zone.unlocked));
+  });
+
+  it("is idempotent — repeat T16 clears do not re-grant", () => {
+    const nexus = makeNexus({ sovereignUnlocked: true });
+    const result = grantSovereignUnlock(nexus, ZONES);
+    expect(result.unlocked).toBe(false);
+    expect(result.nexus).toBe(nexus);
+    expect(result.zones).toBe(ZONES);
+  });
+
+  it("completing a T16 map reports tier 16 for the unlock hook and keeps the milestone payout", () => {
+    const tier = NEXUS_MAX_TIER;
+    const requiredPacks = nexusMapPacksForTier(tier);
+    const map = makeMap({ id: "pinnacle_map", tier, maxCharges: 1, currentCharges: 1 });
+    const result = recordNexusPackClear(makeNexus({
+      maps: [map],
+      activeMapId: map.id,
+      packsCleared: requiredPacks - 1,
+    }));
+
+    expect(result.mapCompleted).toBe(true);
+    expect(result.completedTier).toBe(NEXUS_MAX_TIER);
+    expect(result.riftCrystalReward).toBe(16); // Stage 3 T16 milestone unchanged
+  });
 })
 
 describe("recordNexusPackClear", () => {

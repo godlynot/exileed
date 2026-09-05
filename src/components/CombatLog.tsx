@@ -3,6 +3,7 @@ import type { CombatEvent } from '../types/game.ts'
 import type { Item } from '../types/item.ts'
 import { rarityTextClass } from '../types/item.ts'
 import { useGameStore } from '../store/gameStore.ts'
+import { TICKS_PER_SECOND } from '../data/balance.ts'
 import { ScrollText, ChevronDown, ChevronUp } from 'lucide-react'
 
 interface CombatLogProps {
@@ -20,6 +21,17 @@ function formatEvent(event: CombatEvent, item?: Pick<Item, 'name' | 'slot'>): { 
     case 'bossSpawned':
       return { text: `Boss spawned: ${event.bossId}`, color: 'text-purple-400' }
     case 'hitLanded':
+      if (event.source === 'minion') {
+        const defLabel = (event.sourceId ?? 'minion')
+          .replace(/^minion_/, '')
+          .replace(/_\d+$/, '')
+          .replace(/_/g, ' ')
+        const allyName = defLabel.replace(/\b\w/g, c => c.toUpperCase())
+        return {
+          text: `${allyName} hits for ${event.damage} ${event.damageType} damage${event.crit ? ' (crit)' : ''}`,
+          color: event.crit ? 'text-teal-200' : 'text-emerald-400/80',
+        }
+      }
       if (event.source === 'player') {
         return {
           text: `You hit for ${event.damage} ${event.damageType} damage${event.crit ? ' (crit)' : ''}`,
@@ -81,6 +93,8 @@ function formatEvent(event: CombatEvent, item?: Pick<Item, 'name' | 'slot'>): { 
       return { text: `A ${event.monsterType} joins the pack`, color: 'text-orange-300' }
     case 'packCleared':
       return { text: `Pack cleared (${event.size})`, color: 'text-yellow-300' }
+    case 'travelStarted':
+      return { text: `Traveling to next pack (${(event.durationTicks / TICKS_PER_SECOND).toFixed(1)}s)`, color: 'text-gray-400' }
     case 'riftCrystalGained':
       return { text: `+${event.amount} Rift Crystal${event.amount === 1 ? '' : 's'}`, color: 'text-cyan-300' }
     case 'nexusMapCompleted':
@@ -89,6 +103,14 @@ function formatEvent(event: CombatEvent, item?: Pick<Item, 'name' | 'slot'>): { 
       return { text: `Tier ${event.tier} milestone reached: +${event.amount} Rift Crystals`, color: 'text-[var(--accent-gold)]' }
     case 'bandHit':
       return { text: `${event.skillName} hits ${event.targetCount} targets`, color: 'text-cyan-400' }
+    case 'minionSpawned':
+      return { text: `Summoned: ${event.minionType} (Lv.${event.level})`, color: 'text-emerald-400' }
+    case 'minionRevived':
+      return { text: `${event.minionType} returns to your side`, color: 'text-emerald-300' }
+    case 'minionDied':
+      return { text: `${event.minionType} has fallen`, color: 'text-gray-400' }
+    case 'summonBlocked':
+      return { text: `Cannot summon ${event.minionType}: army is full`, color: 'text-gray-500' }
     default:
       return { text: 'Unknown event', color: 'text-gray-400' }
   }

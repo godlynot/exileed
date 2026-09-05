@@ -359,4 +359,94 @@ export const SKILLS: Record<string, Skill> = {
     damageEffectiveness: 0.85,
     targeting: 'pack',
   },
+
+  // ---------------------------------------------------------------------------
+  // Minion-only attack skills (minion spec §3.2). These are cast exclusively by
+  // summoned minions through the party set — never shown in the player's skill
+  // picker and never dropped as gems (minionOnly gate).
+  // ---------------------------------------------------------------------------
+  sentinel_smash: {
+    id: 'sentinel_smash',
+    name: 'Sentinel Smash',
+    description: 'A bone-crushing blow from a summoned guardian.',
+    tags: ['attack', 'physical', 'melee', 'minion'],
+    baseDamageMin: 2,
+    baseDamageMax: 5,
+    damageType: 'physical',
+    cooldownTicks: 4,
+    damageEffectiveness: 0.8,
+    targeting: 'single',
+    minionOnly: true,
+  },
+  wretch_bite: {
+    id: 'wretch_bite',
+    name: 'Wretch Bite',
+    description: 'A festering bite that leaves rot behind.',
+    tags: ['attack', 'chaos', 'melee', 'dot', 'minion'],
+    baseDamageMin: 2,
+    baseDamageMax: 4,
+    damageType: 'chaos',
+    cooldownTicks: 3,
+    damageEffectiveness: 0.7,
+    targeting: 'single',
+    appliesAilment: { type: 'poison', damagePerSecond: 2, durationSeconds: 4, percentOfHit: 0.25 },
+    minionOnly: true,
+  },
+  wisp_bolt: {
+    id: 'wisp_bolt',
+    name: 'Wisp Bolt',
+    description: 'A searing arc of rift-lightning hurled from afar.',
+    tags: ['spell', 'lightning', 'projectile', 'farRange', 'minion'],
+    baseDamageMin: 3,
+    baseDamageMax: 6,
+    damageType: 'lightning',
+    cooldownTicks: 4,
+    damageEffectiveness: 0.9,
+    targeting: 'single',
+    minionOnly: true,
+  },
+
+  // ---------------------------------------------------------------------------
+  // Summon skills (minion spec §4.1): casts spawn/renew the minion instead of
+  // dealing damage. Obtained as skill gems like any other skill.
+  // ---------------------------------------------------------------------------
+  summon_sentinel: {
+    id: 'summon_sentinel',
+    name: 'Summon Bone Sentinel',
+    description: 'Raise a bone sentinel that guards you and smashes enemies.',
+    tags: ['spell', 'physical', 'minion'],
+    baseDamageMin: 1,
+    baseDamageMax: 2,
+    damageType: 'physical',
+    cooldownTicks: 40,
+    damageEffectiveness: 0.1,
+    targeting: 'single',
+    summons: { minionDefId: 'bone_sentinel' },
+  },
+  summon_wretch: {
+    id: 'summon_wretch',
+    name: 'Summon Plague Wretch',
+    description: 'Raise a plague wretch that bites enemies and spreads rot.',
+    tags: ['spell', 'chaos', 'minion'],
+    baseDamageMin: 1,
+    baseDamageMax: 2,
+    damageType: 'chaos',
+    cooldownTicks: 40,
+    damageEffectiveness: 0.1,
+    targeting: 'single',
+    summons: { minionDefId: 'plague_wretch' },
+  },
+  summon_wisp: {
+    id: 'summon_wisp',
+    name: 'Summon Rift Wisp',
+    description: 'Call a fragile rift wisp that pelts enemies from afar.',
+    tags: ['spell', 'lightning', 'minion'],
+    baseDamageMin: 1,
+    baseDamageMax: 2,
+    damageType: 'lightning',
+    cooldownTicks: 40,
+    damageEffectiveness: 0.1,
+    targeting: 'single',
+    summons: { minionDefId: 'rift_wisp' },
+  },
 }

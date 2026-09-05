@@ -1,5 +1,7 @@
 # Range-Band System Spec (Pack Lanes, M5 pre-work)
 
+> **Update (2026-09-04):** the spatial-combat deferral referenced below was lifted by the owner, and Spatial Stage 1 (travel phase + top-down pack map, `systems/spatial.ts` + `components/PackMap.tsx`) is shipped. The band system itself is unchanged: band membership is still the static slot index, the map's coordinates are cosmetic, and band logic still never reads positions.
+
 Schedule this as part of the pack-lane combat work (after M4.5 skills/ascendancies exist). It is deliberately the **simplest mechanically-real** version of range in the pack lane — no continuous distances, no movement physics, no targeting UI. If implementing this ever requires monster coordinates or collision, that means scope has drifted into the spatial engine we explicitly cut; stop and go back to slot indices.
 
 This is the complete, approved design. The mechanic shapes are fixed; values marked **(tune)** are yours to balance. Ask before any structural deviation.

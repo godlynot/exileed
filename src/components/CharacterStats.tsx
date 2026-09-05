@@ -1,6 +1,8 @@
 import type { ReactNode } from 'react'
 import type { Character, CombatState } from '../types/game.ts'
-import { DAMAGE, monsterScalingMultiplier } from '../data/balance.ts'
+import { DAMAGE, TICKS_PER_SECOND, MOVEMENT, effectiveMovementSpeed, monsterScalingMultiplier } from '../data/balance.ts'
+import { MINIONS } from '../data/minions.ts'
+import { estimateMinionDpsPerTick, estimateMinionDpsShare } from '../systems/minions.ts'
 import {
   momentumDamageMultiplier,
   momentumActionSpeed,
@@ -87,6 +89,40 @@ export function CharacterStats({ character, combat }: { character: Character; co
     { key: 'chaos' as const, label: 'Chaos', value: character.resistances.chaos * 100 },
   ]
 
+  // Minion army summary (minion-system-spec.md §9.4): one row per summon plus
+  // the army's DPS contribution when a target is present.
+  const summons = character.summons ?? []
+  const minionRows = summons.map((summon, index) => {
+    const def = MINIONS[summon.minionDefId]
+    const instanceIndex = summons.slice(0, index + 1).filter(s => s.minionDefId === summon.minionDefId).length
+    const live = combat.party?.members.find(
+      member => member.id === `minion_${summon.minionDefId}_${instanceIndex}`,
+    )
+    return {
+      key: `minion_${summon.minionDefId}_${instanceIndex}`,
+      label: `${def?.name ?? summon.minionDefId}${instanceIndex > 1 ? ` ${instanceIndex}` : ''}`,
+      value: summon.alive
+        ? `L${summon.level} · ${Math.round(live?.life ?? 0)}/${Math.round(live?.maxLife ?? 0)}`
+        : `Reviving ${Math.max(1, Math.ceil(summon.respawnTicksRemaining / TICKS_PER_SECOND))}s`,
+      accent: summon.alive,
+    }
+  })
+  const monster = combat.monster
+  const heraldsActive = combat.herald?.active ?? []
+  const unwavering = character.special.unwaveringDeclaration === true
+  const minionDps = monster && combat.party
+    ? combat.party.members
+        .filter(member => member.role === 'minion' && member.alive)
+        .reduce(
+          (sum, member) =>
+            sum + estimateMinionDpsPerTick(member, monster, heraldsActive, unwavering, combat.herald?.tideRamp ?? 0),
+          0,
+        ) * TICKS_PER_SECOND
+    : null
+  const minionDpsShare = monster && combat.party
+    ? estimateMinionDpsShare(character, combat.party.members, monster, heraldsActive, unwavering, combat)
+    : null
+
   return (
     <div className="game-panel space-y-5 p-4">
       <div className="flex items-start justify-between gap-3">
@@ -127,6 +163,17 @@ export function CharacterStats({ character, combat }: { character: Character; co
           label="Accuracy"
           value={`${Math.floor(character.accuracy)}`}
           detail={currentTargetHitChance === null ? 'no target' : `${(currentTargetHitChance * 100).toFixed(1)}% chance to hit current target`}
+        />
+      </div>
+
+      {/* Movement (Stage 1 spatial): travel speed shown like any other stat.
+          Shows the effective speed incl. Momentum action speed, plus the
+          increased pool and the cap from MOVEMENT.INCREASED_CAP. */}
+      <div className="grid grid-cols-1 gap-2">
+        <MetricCard
+          label="Movement speed"
+          value={`${(effectiveMovementSpeed(character, momentumActionSpeed(momentum, character)) / MOVEMENT.BASE_SPEED * 100).toFixed(0)}%`}
+          detail={`+${Math.min(character.movementSpeed, MOVEMENT.INCREASED_CAP) * 100}% increased (cap +${MOVEMENT.INCREASED_CAP * 100}%) · base ${MOVEMENT.BASE_SPEED} u/tick`}
         />
       </div>
 
@@ -211,6 +258,31 @@ export function CharacterStats({ character, combat }: { character: Character; co
                 <StatRow label="Damage Reduction" value={`${Math.round(momentumDamageReduction(momentum) * 100)}%`} />
               </div>
             )}
+          </div>
+        </section>
+      )}
+
+      {minionRows.length > 0 && (
+        <section className="space-y-2" aria-labelledby="minions-heading">
+          <SectionHeading>Minions</SectionHeading>
+          <h4 id="minions-heading" className="sr-only">Minions</h4>
+          {minionDps !== null && minionDpsShare !== null && (
+            <div className="rounded-lg border border-emerald-500/25 bg-emerald-500/[0.07] p-2.5">
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-xs text-[var(--text-secondary)]">Army DPS contribution</span>
+                <span className="data-value text-xs text-emerald-300">
+                  {Math.round(minionDps)}
+                  {isFinite(minionDpsShare)
+                    ? ` · +${Math.round(minionDpsShare * 100)}% of yours`
+                    : ''}
+                </span>
+              </div>
+            </div>
+          )}
+          <div className="space-y-0.5">
+            {minionRows.map(row => (
+              <StatRow key={row.key} label={row.label} value={row.value} accent={row.accent} />
+            ))}
           </div>
         </section>
       )}

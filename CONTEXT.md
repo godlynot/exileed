@@ -190,6 +190,8 @@ Avoid all Path of Exile trademarked terms.
 7. The Rotting Deep ✅ (levels 50–58, ailments/DoT)
 8. Halls of Judgment ✅ (levels 58–65, everything/crit)
 
+> Note: support slots grow at Acts 3 / 6 / **8** (cap 5), matching this 8-act campaign. Docs or code claiming an Act 9 milestone predate the 8-act campaign.
+
 ### Trial Placement
 - **Trial of Ascension** — Act 3 (level ~30): unlocks first ascendancy choice, 2 points
 - **Trial of Mastery** — Act 6 (level ~50): unlocks second ascendancy choice, 2 points
@@ -258,4 +260,4 @@ Avoid all Path of Exile trademarked terms.
 
 ---
 
-*Last updated: 2026-08-09 (Nexus Stage 3 milestone rewards shipped)*
+*Last updated: 2026-09-04 (Spatial combat Stages 1–4 complete — travel phase, pack map, boss arenas, elite-led formations, swarm encounters; support-slot milestones corrected to Acts 3/6/8)*

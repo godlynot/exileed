@@ -10,11 +10,12 @@ import { PASSIVE_TREE } from '../data/passiveTree.ts'
 import { TRIALS, ASCENDANCIES } from '../data/ascendancies.ts'
 import { applyPassiveStats, applyAscendancyStats, allocateNode, refundNode } from '../systems/passives.ts'
 import { simulateTick, spawnMonster } from '../systems/combat.ts'
+import { syncPartyState } from '../systems/party.ts'
 import { createMomentumState } from '../systems/momentum.ts'
 import { saveGame, loadGame, exportSave as exportSaveString, importSave } from '../systems/save.ts'
 import { computeOfflineSeconds } from '../systems/offlineProgress.ts'
 import type { OfflineSummary } from '../types/game.ts'
-import { createNexusMap, nexusMapCrystalCost, nexusTierCompletionRewardForTier, nexusZoneForMap } from '../systems/nexus.ts'
+import { createNexusMap, nexusMapCrystalCost, nexusTierCompletionRewardForTier, nexusZoneForMap, SOVEREIGN_ZONE_ID } from '../systems/nexus.ts'
 import { BASE_ITEMS, STARTER_ITEMS } from '../data/items.ts'
 import { SUPPORTS } from '../data/supports.ts'
 import { SKILLS } from '../data/skills.ts'
@@ -60,6 +61,7 @@ function createDefaultCharacter(classId: ClassId): Character {
     evasion: gameClass.baseEvasion,
     armour: gameClass.baseAttributes.strength * 2,
     attackRate: 1.0,
+    movementSpeed: 0,
     basePhysicalDamageMin: 2,
     basePhysicalDamageMax: 4,
     criticalChance: 0.05,
@@ -73,6 +75,7 @@ function createDefaultCharacter(classId: ClassId): Character {
     allocatedAscendancyNodes: [],
     keystoneChoices: {},
     ascendancyPoints: 0,
+    summons: [],
     trial1Completed: false,
     trial2Completed: false,
     trial3Completed: false,
@@ -84,6 +87,11 @@ function createDefaultCharacter(classId: ClassId): Character {
       ...(['brute', 'stalker', 'warlord'].includes(classId) ? ['slash', 'added_physical_damage'] : []),
       ...(['acolyte', 'oracle'].includes(classId) ? ['ice_nova', 'added_fire_damage'] : []),
       ...(['plaguebringer'].includes(classId) ? ['essence_drain', 'ailment_magnitude'] : []),
+      // Summon starters: Oracle/Herald, Acolyte/Occultist, Plaguebringer paths get
+      // one summon gem so the minion system is reachable without waiting on a 8% drop.
+      ...(classId === 'oracle' ? ['summon_wisp'] : []),
+      ...(classId === 'acolyte' ? ['summon_wisp'] : []),
+      ...(classId === 'plaguebringer' ? ['summon_wretch'] : []),
     ].map(id => ({ id, level: 1, xp: 0 })),
     supportSlotCount: 2,
     increasedPhysicalDamage: 0,
@@ -188,6 +196,7 @@ function createInitialNexus(): GameState['nexus'] {
     activeMapId: null,
     packsCleared: 0,
     completedTierRewards: [],
+    sovereignUnlocked: false,
   }
 }
 
@@ -217,6 +226,15 @@ function createInitialCombat(zone: Zone): CombatState {
     packSizeRemaining: 0,
     packNamedEliteCount: 0,
     currentPack: [],
+    party: { members: [], ticksSinceAnyMemberHit: 0 },
+    lastDamageSource: 'player',
+    minionAttackCooldowns: {},
+    phase: 'engaged',
+    travelTicksRemaining: 0,
+    travelDurationTicks: 0,
+    partyPosition: { x: 0, y: 0 },
+    waypoint: { x: 0, y: 0 },
+    bossPhaseIndex: 0,
   }
   return spawnMonster(zone, base).combat
 }
@@ -274,6 +292,7 @@ interface GameActions {
   useCurrency: (itemId: string, currencyId: string) => void
   craftNexusMap: (tier: number) => void
   openNexusMap: (mapId: string) => void
+  enterSovereignArena: () => void
   toggleAutoSell: (type: 'normal' | 'magic') => void
   setAutoSellMaxLevel: (maxLevel: number) => void
   allocateNode: (nodeId: string) => void
@@ -295,6 +314,7 @@ interface GameActions {
   devSetLevel: (level: number) => void
   devSetStats: (stats: Partial<Character>) => void
   devSpawnTestPack: () => void
+  devGrantSummonGems: () => void
 }
 
 function getInitialState(): GameState {
@@ -319,6 +339,7 @@ function getInitialState(): GameState {
             completedTierRewards: Array.isArray(loaded.nexus.completedTierRewards)
               ? [...new Set(loaded.nexus.completedTierRewards.filter(tier => typeof tier === 'number' && Number.isFinite(tier)).map(tier => Math.floor(tier)))]
               : [],
+            sovereignUnlocked: loaded.nexus.sovereignUnlocked === true,
           }
         : createInitialNexus(),
       currencies: { rift_crystal: 0, ...loaded.currencies },
@@ -339,7 +360,12 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
       // auto-sold loot without coupling combat to UI formatting. Clear any
       // drops created by an unrelated helper call before starting this tick.
       consumeGeneratedDrops()
-      const { state: nextState, events } = simulateTick(state)
+      const simResult = simulateTick(state)
+      // Party set mirror (M0): rebuilt once per tick from the resolved character
+      // so the party column tracks life/level/respawn live. With zero minions it
+      // holds only the player and touches no combat math (minion spec §2.5).
+      const nextState = syncPartyState(simResult.state)
+      const { events } = simResult
       const generatedDrops = consumeGeneratedDrops()
       const { restored: restoredDrops, autoSold: autoSoldByCombat, goldRefund: restoredGold } = reconcileAutoSellCap(
         generatedDrops,
@@ -497,6 +523,22 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
       const zone = state.zones.find(z => z.id === zoneId)
       if (!zone || !zone.unlocked) return state
       return { ...state, activeZoneId: zoneId, previousZoneId: null, combat: createInitialCombat(zone) }
+    })
+  },
+
+  // Nexus Stage 4: enter the Primeval Sanctum — the pinnacle boss arena.
+  // Guards: unlocked by the first T16 map clear, and no other endgame run active.
+  enterSovereignArena: () => {
+    set(state => {
+      if (!state.nexus.sovereignUnlocked || state.nexus.activeMapId || state.activeTrial) return state
+      const zone = state.zones.find(z => z.id === SOVEREIGN_ZONE_ID)
+      if (!zone || !zone.unlocked) return state
+      return {
+        ...state,
+        activeZoneId: SOVEREIGN_ZONE_ID,
+        previousZoneId: state.activeZoneId === SOVEREIGN_ZONE_ID ? null : state.activeZoneId,
+        combat: createInitialCombat(zone),
+      }
     })
   },
 
@@ -798,7 +840,8 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
     set(state => {
       const equippedSkills = [...state.character.equippedSkills]
       if (!Number.isInteger(slotIndex) || slotIndex < 0 || slotIndex >= 4) return state
-      if (!SKILLS[skillId] || !state.character.ownedGems.some(gem => gem.id === skillId)) return state
+      if (!SKILLS[skillId] || SKILLS[skillId].minionOnly) return state
+      if (!state.character.ownedGems.some(gem => gem.id === skillId)) return state
       equippedSkills[slotIndex] = { skillId, supportIds: [], cooldownRemaining: 0, hitCounter: 0 }
       const character = recalcCharacter(state, { ...state.character, equippedSkills })
       return { ...state, character }
@@ -890,7 +933,7 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
         marshal: { army: null, bulwarkFlat: 0, bulwarkTicksRemaining: 0 },
         packSizeRemaining: 0,
         packNamedEliteCount: 0,
-        currentPack: [trialMember],
+        currentPack: [{ ...trialMember, position: { x: 0, y: 0 } }],
         delayedDamageQueue: [],
         ailments: {},
         virulent: { stacks: {}, septicemiaMultiplier: {}, calcifyAccumulator: {}, slow: {}, patientZeroTarget: null },
@@ -899,6 +942,15 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
         packDamageCarryover: 0,
         damageTakenByType: { physical: 0, fire: 0, cold: 0, lightning: 0, chaos: 0 },
         deathSummary: null,
+        party: { members: [], ticksSinceAnyMemberHit: 0 },
+    lastDamageSource: 'player',
+    minionAttackCooldowns: {},
+    phase: 'engaged',
+    travelTicksRemaining: 0,
+    travelDurationTicks: 0,
+    partyPosition: { x: 0, y: 0 },
+    waypoint: { x: 0, y: 0 },
+    bossPhaseIndex: 0,
       }
       return { ...state, activeTrial: trial, previousZoneId: state.activeZoneId, combat }
     })
@@ -940,6 +992,20 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
     })
   },
 
+  devGrantSummonGems: () => {
+    set(state => {
+      const missing = ['summon_sentinel', 'summon_wretch', 'summon_wisp'].filter(
+        id => !state.character.ownedGems.some(gem => gem.id === id),
+      )
+      if (missing.length === 0) return state
+      const character = recalcCharacter(state, {
+        ...state.character,
+        ownedGems: [...state.character.ownedGems, ...missing.map(id => ({ id, level: 1, xp: 0 }))],
+      })
+      return { ...state, character }
+    })
+  },
+
   devSpawnTestPack: () => {
     set(state => {
       const base = MONSTERS['tidecaller'] ?? state.combat.monster
@@ -953,6 +1019,7 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
           monster,
           currentLife: maxLife,
           maxLife,
+          position: { x: slot * 2.2, y: slot * 1.1 },
         }
       }
       const pack = [

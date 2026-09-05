@@ -14,11 +14,12 @@ import type {
   AilmentInstance,
   PackMember,
 } from '../types/game.ts'
-import { DAMAGE, MONSTER, RECOVERY, TICKS_PER_SECOND, TICK_RATE, monsterScalingMultiplier } from '../data/balance.ts'
+import { DAMAGE, MONSTER, MOVEMENT, RECOVERY, TICKS_PER_SECOND, TICK_RATE, monsterScalingMultiplier, supportSlotCountForCompletedActs } from '../data/balance.ts'
 import { applyDeathPenalty, addExperience } from './xp.ts'
 import { dropItem, recalculateCharacterFromEquipment, type DropModifiers } from './items.ts'
 import { applyPassiveStats, applyAscendancyStats } from './passives.ts'
 import { MONSTERS } from '../data/monsters.ts'
+import { isSwarmTemplate } from '../data/swarmMonsters.ts'
 import { SKILLS } from '../data/skills.ts'
 import { SUPPORTS } from '../data/supports.ts'
 import {
@@ -29,8 +30,12 @@ import {
   scaleModifierValue,
 } from '../data/monsterModifiers.ts'
 import { createMomentumState, gainMomentum, tickMomentumDecay, effectiveCooldownTicks, momentumDamageMultiplier, isMaxMomentum, breakneckRaiseCap } from './momentum.ts'
+import { BOSS_ARENA_OFFSET_Y } from './spatial.ts'
+import { applyPartyEffects, resolveParty } from './party.ts'
 import { createAilmentFromSkill, createAilmentFromAura, tickAilments } from './ailments.ts'
 import { getGemLevel, gainGemXpForSkillUse, skillDamageMultiplier, supportModMultiplier } from './gems.ts'
+import { summonMinion, tickSummonRevivals, processMinionHits } from './minions.ts'
+import { leadWithElite, nextWaypoint, placePackAtWaypoint, playerSpeed } from './spatial.ts'
 import { aggregateMapAffixEffects } from '../data/mapAffixes.ts'
 import {
   NEXUS_RIFT_CRYSTAL_DROP_CHANCE,
@@ -39,6 +44,10 @@ import {
   nexusZoneIdForMap,
   recordNexusPackClear,
   riftCrystalRewardForBoss,
+  grantSovereignUnlock,
+  NEXUS_MAX_TIER,
+  SOVEREIGN_MONSTER_ID,
+  SOVEREIGN_RIFT_CRYSTAL_REWARD,
 } from './nexus.ts'
 
 let eventIdCounter = 0
@@ -120,6 +129,71 @@ export function createCombatState(monster: Monster): CombatState {
     packSizeRemaining: 0,
     packNamedEliteCount: 0,
     currentPack: [],
+    party: { members: [], ticksSinceAnyMemberHit: 0 },
+    lastDamageSource: 'player',
+    minionAttackCooldowns: {},
+    phase: 'engaged',
+    travelTicksRemaining: 0,
+    travelDurationTicks: 0,
+    partyPosition: { x: 0, y: 0 },
+    waypoint: { x: 0, y: 0 },
+    bossPhaseIndex: 0,
+  }
+}
+
+/**
+ * Nexus Stage 4 boss phase engine: activates the next `phases` entry when the
+ * boss crosses its `healthPercent` threshold. Applies statOverrides +
+ * attackRateMultiplier + addComponents (mutating the live pack member), emits
+ * `bossPhaseChanged`, and clears the phase tracker when the encounter ends so
+ * repeat fights start fresh. Thresholds are ordered (deepest last); each fires
+ * exactly once per encounter.
+ *
+ * Returns the combat untouched when the boss has no phases left to trigger.
+ */
+function advanceBossPhases(
+  combat: CombatState,
+  events: CombatEvent[],
+): CombatState {
+  const monster = combat.monster
+  if (!monster || monster.rarity !== 'boss' || !monster.phases || monster.phases.length === 0) {
+    return combat
+  }
+  if (combat.monsterLife <= 0) return combat
+  if (combat.bossPhaseIndex >= monster.phases.length) return combat
+
+  const healthPercent = combat.monsterLife / monster.maxLife
+  const nextPhase = monster.phases[combat.bossPhaseIndex]
+  if (!nextPhase || healthPercent > nextPhase.healthPercent) return combat
+
+  // Apply the phase shift to the live monster (pack member + active pointer).
+  const pack = [...combat.currentPack]
+  const memberIdx = pack.findIndex(member => member.monster.id === monster.id)
+  const shifted: Monster = {
+    ...monster,
+    ...nextPhase.statOverrides,
+    damage: [
+      ...monster.damage.map(d => ({ ...d })),
+      ...(nextPhase.addComponents ?? []).map(c => ({ ...c })),
+    ],
+    attackRate: nextPhase.attackRateMultiplier
+      ? monster.attackRate * nextPhase.attackRateMultiplier
+      : monster.attackRate,
+  }
+  if (memberIdx >= 0) {
+    pack[memberIdx] = { ...pack[memberIdx], monster: shifted }
+  }
+  events.push(makeEvent({
+    type: 'bossPhaseChanged',
+    bossId: monster.id,
+    phaseIndex: combat.bossPhaseIndex + 1,
+    totalPhases: monster.phases.length,
+  }))
+  return {
+    ...combat,
+    currentPack: memberIdx >= 0 ? pack : combat.currentPack,
+    monster: shifted,
+    bossPhaseIndex: combat.bossPhaseIndex + 1,
   }
 }
 
@@ -151,6 +225,12 @@ function scaleMonster(monster: Monster, zone: Zone): Monster {
 }
 
 function rollPackSize(zone: Zone): number {
+  // Stage 4: swarm-tagged monsters engage in oversized packs of 4-8 (spec:
+  // "4-8 for swarm-tagged monsters"). The pack is a swarm if the FIRST rolled
+  // template is a swarm monster — swarm members share the pack.
+  if (zone.monsterIds.some(id => isSwarmTemplate(id))) {
+    return 4 + Math.floor(Math.random() * 5)
+  }
   // Pack size 1-4, weighted toward smaller packs earlier and larger packs later.
   const levelWeight = Math.min(1, (zone.level - 1) / 60)
   const roll = Math.random()
@@ -269,7 +349,15 @@ function createMonster(zone: Zone, canSpawnNamedElite: boolean): Monster {
 }
 
 function seedPack(zone: Zone, combat: CombatState): { pack: PackMember[]; combat: CombatState; events: CombatEvent[] } {
-  const size = rollPackSize(zone)
+  // Stage 2 (spatial boss encounters): a zone whose entire monster pool is
+  // bosses (act-end boss arenas, killsRequired = 1) is a solo encounter —
+  // pack sizing must never multiply the boss into a pack of clones.
+  const bossOnlyPool =
+    zone.monsterIds.length > 0 &&
+    zone.monsterIds.every(id => MONSTERS[id]?.rarity === 'boss')
+  // Stage 4: swarm zones engage in oversized wedge formations.
+  const isSwarmPack = !bossOnlyPool && zone.monsterIds.some(id => isSwarmTemplate(id))
+  const size = bossOnlyPool ? 1 : rollPackSize(zone)
   const maxElites = maxNamedElitesForZone(zone)
   const pack: PackMember[] = []
   const events: CombatEvent[] = []
@@ -295,6 +383,9 @@ function seedPack(zone: Zone, combat: CombatState): { pack: PackMember[]; combat
       currentLife: monster.maxLife,
       maxLife: monster.maxLife,
       slot,
+      // Positioned by placePackAtWaypoint after seeding; origin is a safe
+      // pre-placement default.
+      position: { x: 0, y: 0 },
     })
   }
 
@@ -306,7 +397,20 @@ function seedPack(zone: Zone, combat: CombatState): { pack: PackMember[]; combat
   }))
 
   return {
-    pack,
+    // Boss arenas: the boss stands centered just north of the waypoint (the
+    // party arrives at the waypoint itself, approaching from the south).
+    // Swarm packs engage in a tight wedge (Stage 4). Regular packs scatter
+    // north of it (placePackAtWaypoint), with a named elite leading the
+    // formation (Stage 3: the elite engages first).
+    pack: bossOnlyPool
+      ? pack.map(member => ({
+          ...member,
+          position: {
+            x: Math.round(combat.waypoint.x * 100) / 100,
+            y: Math.round((combat.waypoint.y - BOSS_ARENA_OFFSET_Y) * 100) / 100,
+          },
+        }))
+      : placePackAtWaypoint(leadWithElite(pack), combat.waypoint, isSwarmPack),
     combat: { ...combat, packNamedEliteCount, packSizeRemaining: size },
     events,
   }
@@ -334,7 +438,8 @@ function advancePack(
   zone: Zone,
   combat: CombatState,
   events: CombatEvent[],
-  carryoverDamage: number
+  carryoverDamage: number,
+  character?: Character
 ): CombatState {
   const originalSize = combat.currentPack.length
 
@@ -360,33 +465,58 @@ function advancePack(
     return activatePackMember({ ...combat, currentPack: [updated, ...remaining.slice(1)] }, updated)
   }
 
-  // Pack cleared: seed the next pack
+  // Pack cleared (Stage 1 spatial): the next pack is NOT seeded this tick.
+  // Combat enters the traveling phase for a deterministic tick duration; the
+  // next pack seeds on arrival. Momentum/regen/DOTs keep ticking meanwhile.
   events.push(makeEvent({ type: 'packCleared', size: originalSize }))
-  const seed = seedPack(zone, combat)
-  const first = { ...seed.pack[0], currentLife: Math.max(1, seed.pack[0].currentLife - carryoverDamage) }
-  const seededPack = [first, ...seed.pack.slice(1)]
-  const nextCombat = activatePackMember({ ...seed.combat, currentPack: seededPack }, first)
-  events.push(...seed.events)
-  const promoted = nextCombat.currentPack[0]
+  void zone
+  return beginTravelToNextPack(combat, events, character)
+}
+
+/**
+ * Stage 1 travel phase: pick the next waypoint, compute the tick duration
+ * from the player's current movement speed, and enter 'traveling'. The next
+ * pack is seeded by arriveAtWaypoint on the tick travelTicksRemaining hits 0.
+ * Pure: caller passes its own events array (we only append the log line).
+ */
+function beginTravelToNextPack(
+  combat: CombatState,
+  events: CombatEvent[],
+  character?: Character
+): CombatState {
+  const { waypoint, distance } = nextWaypoint(combat.partyPosition)
+  const speed = character
+    ? playerSpeed(character, combat)
+    : MOVEMENT.BASE_SPEED
+  const duration = Math.max(1, Math.ceil(distance / speed))
   events.push(makeEvent({
-    type: 'monsterSpawned',
-    monsterId: promoted.monster.id,
-    monsterType: promoted.monster.name,
-    level: promoted.monster.level,
-    rarity: promoted.monster.rarity,
-    modifierNames: (promoted.monster.modifierIds ?? []).map(id => MONSTER_MODIFIERS_BY_ID[id]?.displayName ?? id),
+    type: 'travelStarted',
+    distance,
+    durationTicks: duration,
   }))
-  if (promoted.monster.rarity === 'boss') {
-    events.push(makeEvent({ type: 'bossSpawned', bossId: promoted.monster.id }))
-  }
   return {
-    ...nextCombat,
-    currentPack: seededPack,
+    ...combat,
+    phase: 'traveling',
+    travelTicksRemaining: duration,
+    travelDurationTicks: duration,
+    waypoint,
+    // Party position stays where it is; the renderer interpolates movement.
+    monster: null,
+    monsterLife: 0,
+    // Post-pack bookkeeping, unchanged from the old same-tick reseed.
     damageTakenByType: { physical: 0, fire: 0, cold: 0, lightning: 0, chaos: 0 },
+    currentPack: [],
+    packSizeRemaining: 0,
+    // Boss phase tracker resets per encounter (Stage 4).
+    bossPhaseIndex: 0,
+    packNamedEliteCount: 0,
   }
 }
 
 export function spawnMonster(zone: Zone, combat: CombatState): { monster: Monster; combat: CombatState; events: CombatEvent[] } {
+  // Seeds the pack around combat.waypoint (set by beginTravelToNextPack or
+  // zone entry) and activates the front member. Does NOT change phase — the
+  // caller decides engaged vs. still traveling.
   const seed = seedPack(zone, combat)
   const nextCombat = activatePackMember(seed.combat, seed.pack[0])
   return {
@@ -780,6 +910,7 @@ export function processSkillHits(character: Character, monster: Monster, combat:
   let ailments: AilmentInstance[] = []
   const leveledUp: { gemId: string; newLevel: number }[] = []
   const hitsBySkill: SkillHitOutcome[] = []
+  const summonEvents: CombatEvent[] = []
   for (const equipped of character.equippedSkills) {
     const skill = SKILLS[equipped.skillId]
     if (!skill) {
@@ -788,6 +919,28 @@ export function processSkillHits(character: Character, monster: Monster, combat:
     }
     if (equipped.cooldownRemaining > 0) {
       nextEquipped.push({ ...equipped, cooldownRemaining: equipped.cooldownRemaining - 1 })
+      continue
+    }
+    // Summon skills spawn/renew a minion instead of dealing damage (minion spec §4.2).
+    if (skill.summons) {
+      const linkedSummonSupports = linkedSupportsForSkill(equipped, skill)
+      const summonMods = aggregateSupportModifiers(
+        linkedSummonSupports.map(entry => entry.support),
+        linkedSummonSupports.map(entry => entry.id),
+        character,
+      )
+      const summonActionSpeed = (
+        (summonMods.increased['inc_attack_speed_percent'] ?? 0) +
+        (summonMods.increased['inc_cast_speed_percent'] ?? 0)
+      ) / 100
+      const summonResult = summonMinion(character, skill.summons.minionDefId)
+      character = summonResult.character
+      if (summonResult.event) summonEvents.push(summonResult.event)
+      nextEquipped.push({
+        ...equipped,
+        cooldownRemaining: effectiveCooldownTicks(skill.cooldownTicks, combat.momentum, character, summonActionSpeed),
+        hitCounter: equipped.hitCounter + 1,
+      })
       continue
     }
     const result = skillDamage(character, equipped, skill, monster, currentStacks, combat)
@@ -821,10 +974,13 @@ export function processSkillHits(character: Character, monster: Monster, combat:
     combat = { ...combat, momentum: gainMomentum(combat.momentum, 1, character) }
   }
 
-  const extraEvents: CombatEvent[] = leveledUp.map(l => {
-    const gem = SKILLS[l.gemId] ?? SUPPORTS[l.gemId]
-    return makeEvent({ type: 'gemLeveledUp', gemId: l.gemId, gemName: gem?.name ?? l.gemId, newLevel: l.newLevel })
-  })
+  const extraEvents: CombatEvent[] = [
+    ...leveledUp.map(l => {
+      const gem = SKILLS[l.gemId] ?? SUPPORTS[l.gemId]
+      return makeEvent({ type: 'gemLeveledUp', gemId: l.gemId, gemName: gem?.name ?? l.gemId, newLevel: l.newLevel })
+    }),
+    ...summonEvents,
+  ]
 
   const event: CombatEvent = evaded
     ? makeEvent({ type: 'hitAvoided', source: 'player', targetId: monster.id, reason: 'missed' })
@@ -948,8 +1104,14 @@ export function simulateTick(state: GameState): { state: GameState; events: Comb
     }
   }
 
-  // Snapshot the active auras into combat state so all combat hooks read from the same source.
-  combat = { ...combat, herald: { ...combat.herald, active: getHeraldActive(character.special, character.keystoneChoices) } }
+  // Party-set effects (M1, minion spec §2.4): every active aura/army is stamped
+  // onto all party members' activeEffects. Later phases refactor these reads to
+  // consume the set instead of re-deriving them from character.special here.
+  combat = {
+    ...combat,
+    herald: { ...combat.herald, active: getHeraldActive(character.special, character.keystoneChoices) },
+    party: applyPartyEffects({ ...state, combat }).combat.party,
+  }
   const activeHeralds = combat.herald.active
   if (combat.monster && combat.monsterLife > 0 && activeHeralds.includes('storms')) {
     const stormPeriod = 3 * TICKS_PER_SECOND
@@ -1036,15 +1198,36 @@ export function simulateTick(state: GameState): { state: GameState; events: Comb
     }
   }
 
-  // Ensure a pack exists and an front monster is active
-  if (combat.currentPack.length === 0) {
+  // Travel phase (Stage 1 spatial): no attacks in either direction. Buffs,
+  // DOTs, ES recharge and Momentum decay already ran above on their normal
+  // timers. When the timer expires, seed the pack at the waypoint and engage.
+  if (combat.phase === 'traveling') {
+    if (combat.travelTicksRemaining > 1) {
+      combat = { ...combat, travelTicksRemaining: combat.travelTicksRemaining - 1 }
+      // Minion respawn timers and the party mirror keep ticking during travel
+      // (spec section 3: timers run on their normal schedule mid-travel).
+      const travelRevival = tickSummonRevivals(character)
+      character = travelRevival.character
+      events.push(...travelRevival.events)
+      combat = { ...combat, party: { ...combat.party, members: resolveParty(character) } }
+      return {
+        state: { ...state, character, combat, zones, inventory, activeZoneId, previousZoneId, activeTrial, gamePhase, nexus },
+        events,
+      }
+    }
+    // Arrival tick: seed the pack at the waypoint and engage. Seeding must
+    // happen with phase 'engaged' so placement uses the waypoint correctly.
     if (!zone) {
       return { state: { ...state, character, combat, zones, inventory, activeZoneId, previousZoneId, activeTrial, gamePhase, nexus }, events }
     }
-    const spawnResult = spawnMonster(zone, combat)
+    const spawnResult = spawnMonster(zone, { ...combat, phase: 'engaged' })
     combat = {
       ...spawnResult.combat,
+      phase: 'engaged',
+      travelTicksRemaining: 0,
       damageTakenByType: { physical: 0, fire: 0, cold: 0, lightning: 0, chaos: 0 },
+      // The party now stands at the pack: re-anchor to the waypoint.
+      partyPosition: { ...combat.waypoint },
     }
     events.push(...spawnResult.events)
     const monster = spawnResult.monster
@@ -1059,6 +1242,13 @@ export function simulateTick(state: GameState): { state: GameState; events: Comb
     if (monster.rarity === 'boss') {
       events.push(makeEvent({ type: 'bossSpawned', bossId: monster.id }))
     }
+  } else if (combat.currentPack.length === 0) {
+    // Engaged with no pack (fresh zone entry / post-nexus reset): start a
+    // travel beat to the first pack instead of spawning it instantly.
+    if (!zone) {
+      return { state: { ...state, character, combat, zones, inventory, activeZoneId, previousZoneId, activeTrial, gamePhase, nexus }, events }
+    }
+    combat = beginTravelToNextPack(combat, events, character)
   } else if (!combat.monster) {
     // A pack exists but the active monster pointer was lost; restore it
     combat = activatePackMember(combat, combat.currentPack[0])
@@ -1101,7 +1291,7 @@ export function simulateTick(state: GameState): { state: GameState; events: Comb
         }
       }
       const frontLife = pack.length > 0 ? pack[0].currentLife : 0
-      combat = { ...combat, currentPack: pack, monsterLife: frontLife, lastDamageDealt: appliedDamage }
+      combat = { ...combat, currentPack: pack, monsterLife: frontLife, lastDamageDealt: appliedDamage, lastDamageSource: 'player' }
       events.push(skillResult.event)
       // apply ailments
       if (skillResult.ailments.length > 0) {
@@ -1177,6 +1367,43 @@ export function simulateTick(state: GameState): { state: GameState; events: Comb
     }
   }
 
+  // Minion attack turns (minion spec §5): alive minions fire on their own
+  // cooldowns through the same front-to-back band distribution as player
+  // skills. Minion kills grant no rewards (§5.4) — attribution below.
+  if (combat.monsterLife > 0 && combat.currentPack.length > 0) {
+    const minionResult = processMinionHits(character, combat, monster)
+    combat = minionResult.combat
+    events.push(...minionResult.events)
+    for (const hit of minionResult.hits) {
+      const count = Math.min(hit.targetCount, combat.currentPack.length)
+      const pack = [...combat.currentPack]
+      for (let i = 0; i < count; i++) {
+        pack[i] = { ...pack[i], currentLife: Math.max(0, pack[i].currentLife - hit.damage) }
+      }
+      const appliedDamage = hit.damage * count
+      const frontLife = pack.length > 0 ? pack[0].currentLife : 0
+      combat = { ...combat, currentPack: pack, monsterLife: frontLife, lastDamageDealt: appliedDamage, lastDamageSource: 'minion' }
+      // Ailments on every band target (plain copies on back members).
+      if (hit.ailments.length > 0) {
+        const nextAilments = { ...combat.ailments }
+        for (let i = 0; i < count && i < pack.length; i++) {
+          const targetId = pack[i].monster.id
+          nextAilments[targetId] = [...(nextAilments[targetId] ?? []), ...hit.ailments.map(a => ({ ...a }))]
+          events.push(makeEvent({ type: 'ailmentApplied', targetId, ailmentType: hit.ailments[0].type }))
+        }
+        combat = { ...combat, ailments: nextAilments }
+        // Wretch bites feed Virulent stack tracking (spec §7.3).
+        if (
+          character.special.septicemia || character.special.cardiacArrest ||
+          character.special.asphyxiation || character.special.cirrhosis || character.special.calcify
+        ) {
+          const newStacks = (combat.virulent.stacks[monster.id] ?? 0) + hit.ailments.length
+          combat = { ...combat, virulent: { ...combat.virulent, stacks: { ...combat.virulent.stacks, [monster.id]: newStacks } } }
+        }
+      }
+    }
+  }
+
   // DOT ticks
   if (combat.monsterLife > 0 && combat.ailments[monster.id] && combat.ailments[monster.id].length > 0) {
     let tickMultiplier = 1
@@ -1217,7 +1444,7 @@ export function simulateTick(state: GameState): { state: GameState; events: Comb
 
     combat = { ...combat, ailments: { ...combat.ailments, [monster.id]: tickResult.newAilments } }
     if (dotDamage > 0) {
-      combat = { ...combat, monsterLife: Math.max(0, combat.monsterLife - dotDamage), lastDamageDealt: dotDamage }
+      combat = { ...combat, monsterLife: Math.max(0, combat.monsterLife - dotDamage), lastDamageDealt: dotDamage, lastDamageSource: 'player' }
     }
     events.push(...tickResult.events)
   }
@@ -1385,15 +1612,25 @@ export function simulateTick(state: GameState): { state: GameState; events: Comb
   // Keep the pack member's current life in sync before deciding death
   combat = syncActivePackMember(combat)
 
+
+  // Nexus Stage 4: phased bosses shift stats when crossing health thresholds.
+  // Runs after all player/minion/DOT damage so a phase never overrides the
+  // killing blow in the same tick, and before the death check.
+  combat = advanceBossPhases(combat, events)
   // Monster killed
   if (combat.monsterLife <= 0) {
-    let goldEarned = monster.goldReward
-    if (hasHerald(combat, 'gold')) {
+    // Reward attribution (minion spec 5.4): minion killing blows grant no
+    // gold, XP, loot, currency, or zone/trial progress.
+    const minionKill = combat.lastDamageSource === 'minion'
+    let goldEarned = minionKill ? 0 : monster.goldReward
+    if (!minionKill && hasHerald(combat, 'gold')) {
       const goldMultiplier = character.special.unwaveringDeclaration ? 1.5 : 1.25
       goldEarned = Math.floor(goldEarned * goldMultiplier)
     }
-    goldEarned = Math.floor(goldEarned * (1 + (character.goldFindPercent ?? 0) / 100))
-    const xpEarned = monster.experienceReward
+    if (!minionKill) {
+      goldEarned = Math.floor(goldEarned * (1 + (character.goldFindPercent ?? 0) / 100))
+    }
+    const xpEarned = minionKill ? 0 : monster.experienceReward
 
     events.push(makeEvent({ type: 'monsterDied', monsterId: monster.id, monsterType: monster.name }))
     if (monster.rarity === 'boss') {
@@ -1408,6 +1645,22 @@ export function simulateTick(state: GameState): { state: GameState; events: Comb
     if (riftCrystalReward > 0) {
       currencies['rift_crystal'] = (currencies['rift_crystal'] || 0) + riftCrystalReward
       events.push(makeEvent({ type: 'riftCrystalGained', amount: riftCrystalReward }))
+    }
+
+    // Nexus Stage 4: the Primeval Sovereign pays 25 crystals + a guaranteed
+    // unique (approved design). Player kills only — minion spec 5.4.
+    if (!minionKill && monster.id === SOVEREIGN_MONSTER_ID) {
+      currencies['rift_crystal'] = (currencies['rift_crystal'] || 0) + SOVEREIGN_RIFT_CRYSTAL_REWARD
+      events.push(makeEvent({ type: 'riftCrystalGained', amount: SOVEREIGN_RIFT_CRYSTAL_REWARD }))
+      const pinnacleDrop = dropItem(zone?.level ?? character.level, { forceRarity: 'unique' })
+      if (pinnacleDrop) {
+        if (inventory.items.length < inventory.maxSize) {
+          inventory.items = [...inventory.items, pinnacleDrop]
+          events.push(makeEvent({ type: 'itemDropped', itemId: pinnacleDrop.id, rarity: pinnacleDrop.rarity }))
+        } else {
+          currencies['gold'] = (currencies['gold'] || 0) + Math.max(1, pinnacleDrop.itemLevel * 2)
+        }
+      }
     }
 
     // Momentum gain on kill (only for Warlords who have unlocked Momentum; Skirmishers build faster)
@@ -1491,8 +1744,8 @@ export function simulateTick(state: GameState): { state: GameState; events: Comb
       character = recalcCharacter({ ...state, character, combat, zones, inventory, currencies, activeTrial, gamePhase }, character)
     }
 
-    // Drop item
-    if (zone) {
+    // Drop item (player kills only - minion spec 5.4)
+    if (zone && !minionKill) {
       const hasGold = hasHerald(combat, 'gold')
       const unwavering = character.special.unwaveringDeclaration
       const namedEliteBonuses = monster.dropBonuses
@@ -1532,15 +1785,15 @@ export function simulateTick(state: GameState): { state: GameState; events: Comb
       }
     }
 
-    // Currency drop chance
-    if (Math.random() < 0.1) {
+    // Currency drop chance (player kills only - minion spec 5.4)
+    if (!minionKill && Math.random() < 0.1) {
       const currencyPool = ['awakening', 'mutation', 'cleansing']
       const currencyId = currencyPool[Math.floor(Math.random() * currencyPool.length)]
       currencies[currencyId] = (currencies[currencyId] || 0) + 1
     }
 
-    // Zone progress
-    if (zone) {
+    // Zone progress (player kills only - minion spec 5.4)
+    if (zone && !minionKill) {
       const newProgress = Math.min(100, zone.killProgress + 100 / zone.killsRequired)
       zones = zones.map(w => (w.id === zone.id ? { ...w, killProgress: newProgress } : w))
       events.push(makeEvent({ type: 'zoneProgress', current: newProgress, total: 100 }))
@@ -1550,19 +1803,17 @@ export function simulateTick(state: GameState): { state: GameState; events: Comb
         zones = zones.map((w, idx) => (idx === currentIndex + 1 ? { ...w, unlocked: true } : w))
       }
 
-      // Support slot growth at campaign milestones (Act 3, 6, 9 -> 3, 4, 5 slots)
-      const completedActs = new Set(zones.filter(w => w.killProgress >= 100).map(w => w.act))
-      let slotCount = 2
-      if (completedActs.has(3)) slotCount = 3
-      if (completedActs.has(6)) slotCount = 4
-      if (completedActs.has(9)) slotCount = 5
+      // Support slot growth at campaign milestones via the shared balance
+      // helper so offline-simulated progress matches live play exactly.
+      const completedActs = zones.filter(w => w.killProgress >= 100).map(w => w.act)
+      const slotCount = supportSlotCountForCompletedActs(completedActs)
       if (character.supportSlotCount !== slotCount) {
         character = { ...character, supportSlotCount: slotCount }
       }
     }
 
-    // Trial completion
-    if (activeTrial) {
+    // Trial completion (player kills only - minion spec 5.4)
+    if (activeTrial && !minionKill) {
       let trial1Completed = character.trial1Completed
       let trial2Completed = character.trial2Completed
       let trial3Completed = character.trial3Completed
@@ -1582,7 +1833,7 @@ export function simulateTick(state: GameState): { state: GameState; events: Comb
     // Advance to the next pack member or seed a fresh pack
     if (zone) {
       const carryoverDamage = combat.packDamageCarryover
-      combat = advancePack(zone, combat, events, carryoverDamage)
+      combat = advancePack(zone, combat, events, carryoverDamage, character)
 
       // Plaguewind carryover: DOTs from the last killed monster infect the next active one
       if (combat.monster && combat.plaguewindCarryover.length > 0) {
@@ -1609,8 +1860,18 @@ export function simulateTick(state: GameState): { state: GameState; events: Comb
             packSizeRemaining: 0,
             packNamedEliteCount: 0,
             packDamageCarryover: 0,
+            phase: 'engaged',
           }
           events.push(makeEvent({ type: 'nexusMapCompleted' }))
+          // Nexus Stage 4: the first T16 clear unlocks the Primeval Sovereign arena.
+          if (clearResult.completedTier === NEXUS_MAX_TIER) {
+            const unlock = grantSovereignUnlock(nexus, zones)
+            nexus = unlock.nexus
+            zones = unlock.zones
+            if (unlock.unlocked) {
+              events.push(makeEvent({ type: 'bossSpawned', bossId: SOVEREIGN_MONSTER_ID }))
+            }
+          }
         }
       }
     }
@@ -1618,6 +1879,14 @@ export function simulateTick(state: GameState): { state: GameState; events: Comb
 
   // Apply dev overrides after all calculations
   character = applyDevOverrides(character)
+
+  // Minion lifecycle: auto-revive elapsed respawn timers (decision D1a) and
+  // refresh the live party mirror so dead members leave the set immediately
+  // (minion spec section 4.2 steps 3-4).
+  const revivalResult = tickSummonRevivals(character)
+  character = revivalResult.character
+  events.push(...revivalResult.events)
+  combat = { ...combat, party: { ...combat.party, members: resolveParty(character) } }
 
   const nextState: GameState = {
     ...state,

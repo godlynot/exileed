@@ -179,16 +179,23 @@ function createEmptyGemItem(kind: ItemKind, gemId: string, itemLevel: number, na
 }
 
 export function createGemItem(kind: 'skillGem' | 'supportGem', gemId: string, itemLevel: number): Item | null {
-  const catalog = kind === 'skillGem' ? SKILLS : SUPPORTS
-  const gem = catalog[gemId]
-  return gem ? createEmptyGemItem(kind, gemId, itemLevel, gem.name) : null
+  // Minion-only skills are never obtainable as player gems (minion spec §3.2).
+  if (kind === 'skillGem') {
+    const skill = SKILLS[gemId]
+    if (!skill || skill.minionOnly) return null
+    return createEmptyGemItem(kind, gemId, itemLevel, skill.name)
+  }
+  const support = SUPPORTS[gemId]
+  if (!support) return null
+  return createEmptyGemItem(kind, gemId, itemLevel, support.name)
 }
 
 /** Returns an unowned skill/support gem from a monster drop, or null when no gem drops. */
 export function dropGemItem(zoneLevel: number, ownedGemIds: string[]): Item | null {
   if (Math.random() >= GEMS.GEM_DROP_CHANCE) return null
   const owned = new Set(ownedGemIds)
-  const skillIds = Object.keys(SKILLS).filter(id => !owned.has(id))
+  // Minion-only skills (summon minions' attack skills) never drop as player gems.
+  const skillIds = Object.keys(SKILLS).filter(id => !owned.has(id) && !SKILLS[id].minionOnly)
   const supportIds = Object.keys(SUPPORTS).filter(id => !owned.has(id))
   if (skillIds.length === 0 && supportIds.length === 0) return null
 
@@ -759,6 +766,9 @@ export function recalculateCharacterFromEquipment(character: Character, equipmen
     esRecharge,
     damageVsBossesPercent: bonus.damageVsBossesPercent,
     goldFindPercent: bonus.goldFindPercent,
+    // Total increased movement-speed pool as a fraction (0.15 = +15%). Base
+    // speed and the pool cap are applied by effectiveMovementSpeed (balance.ts).
+    movementSpeed: bonus.movementSpeed,
     chanceToBleed: bonus.chanceToBleed,
     chanceToShock: bonus.chanceToShock,
     chanceToInflictDespair: bonus.chanceToInflictDespair,

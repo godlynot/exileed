@@ -50,6 +50,8 @@ function App() {
   const previousZoneId = useGameStore(state => state.previousZoneId)
   const selectZone = useGameStore(state => state.selectZone)
   const returnToPreviousZone = useGameStore(state => state.returnToPreviousZone)
+  const enterSovereignArena = useGameStore(state => state.enterSovereignArena)
+  const sovereignUnlocked = useGameStore(state => state.nexus.sovereignUnlocked)
   const exportSave = useGameStore(state => state.exportSave)
   const resetGame = useGameStore(state => state.resetGame)
   const advanceToNextAct = useGameStore(state => state.advanceToNextAct)
@@ -250,9 +252,9 @@ function App() {
         {/* Center: Combat + Tabs */}
         <section className="lg:col-span-6 space-y-4">
           <div className="text-center">
-            <h3 className="text-xl font-serif text-gray-200">{monster ? monster.name : 'Resting'}</h3>
+            <h3 className="text-xl font-serif text-gray-200">{monster ? monster.name : combat.phase === 'traveling' ? 'Traveling' : 'Resting'}</h3>
             <div className="text-sm text-gray-400">
-              {monster ? (monster.rarity === 'boss' ? 'Boss' : `Level ${monster.level}`) : 'No enemy'}
+              {monster ? (monster.rarity === 'boss' ? 'Boss' : `Level ${monster.level}`) : combat.phase === 'traveling' ? 'Heading to the next pack' : 'No enemy'}
             </div>
           </div>
           <NexusRunStatus />
@@ -291,6 +293,25 @@ function App() {
                     >
                       Go to Act {nextAct}
                     </button>
+                  )}
+                  {/* Nexus Stage 4: the Primeval Sanctum — pinnacle boss arena */}
+                  {sovereignUnlocked && (
+                    <div className="space-y-2">
+                      <h3 className="text-sm font-serif text-[var(--accent-gold)]">The Nexus — Pinnacle</h3>
+                      <button
+                        onClick={enterSovereignArena}
+                        disabled={activeZoneId === 'primeval_sanctum'}
+                        className={`w-full text-left px-3 py-2 rounded border text-sm flex items-center justify-between border-[var(--accent-gold)]/60 bg-[var(--accent-gold)]/10 ${
+                          activeZoneId === 'primeval_sanctum' ? 'opacity-60 cursor-not-allowed' : 'hover:bg-[var(--accent-gold)]/20'
+                        }`}
+                      >
+                        <span className="flex items-center gap-2 text-[var(--accent-gold)]">
+                          <Skull className="w-4 h-4" />
+                          The Primeval Sanctum
+                        </span>
+                        <span className="text-xs text-gray-400">Lv.141 · Boss</span>
+                      </button>
+                    </div>
                   )}
                   <div className="space-y-6">
                     {actNumbers.map(act => {

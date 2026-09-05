@@ -224,6 +224,9 @@ export function applyPassiveStats(character: Character, tree: PassiveTree): Char
     evasion: Math.max(0, evasion),
     accuracy: Math.max(0, accuracy),
     attackRate: Math.max(0.1, attackRate),
+    // Passive tree contribution to the increased movement-speed pool
+    // (fraction; base speed + cap applied by effectiveMovementSpeed).
+    movementSpeed: character.movementSpeed + (increased['inc_movement_speed_percent'] ?? 0) / 100,
     basePhysicalDamageMin: Math.max(0, basePhysicalDamageMin),
     basePhysicalDamageMax: Math.max(0, basePhysicalDamageMax),
     criticalChance: Math.min(1, Math.max(0, criticalChance)),

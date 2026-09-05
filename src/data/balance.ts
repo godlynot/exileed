@@ -114,6 +114,55 @@ export const GEMS = {
   GEM_DROP_CHANCE: 0.08, // Unowned skill/support gems enter inventory and must be claimed.
 } as const
 
+// Stage 1 spatial travel tuning. World units are abstract; the renderer maps
+// them to screen. Travel beat target: 1.5-3s at baseline (chosen mid-band for
+// readability): BASE_TRAVEL_DISTANCE (±20% jitter) / BASE_SPEED = 20/4 to
+// 16/4..24/4 ticks → ceil(16/4)=4 to ceil(24/4)=6 ticks = 1.6-2.4s at 2.5 t/s.
+export const MOVEMENT = {
+  // World units per tick at baseline (no increased movement speed).
+  BASE_SPEED: 4,
+  // Base distance between pack waypoints, with ±20% randomization.
+  BASE_TRAVEL_DISTANCE: 20,
+  TRAVEL_DISTANCE_JITTER: 0.2,
+  // Hard cap on the TOTAL increased movement speed pool (gear + passives),
+  // expressed as a fraction: 1.0 = +100%. Movement speed raises packs/hour
+  // directly (a clear-rate stat), so the pool is capped; Momentum/Breakneck
+  // action-speed multiplies AFTER the cap (existing action-speed math, not
+  // part of the increased pool).
+  INCREASED_CAP: 1.0,
+} as const
+
+/**
+ * Effective movement speed in world units per tick. `character.movementSpeed`
+ * holds the total increased pool as a fraction (gear rolls + passive %),
+ * capped here at MOVEMENT.INCREASED_CAP. `momentumMult` is the party's
+ * Momentum action-speed multiplier (Breakneck feeds it) applied after the cap.
+ */
+export function effectiveMovementSpeed(character: { movementSpeed: number }, momentumMult = 1): number {
+  const increased = Math.min(Math.max(0, character.movementSpeed), MOVEMENT.INCREASED_CAP)
+  return MOVEMENT.BASE_SPEED * (1 + increased) * momentumMult
+}
+
+// Minion army tuning (minion-system-spec.md §8.1). Stats are
+// minionBase × monsterScalingMultiplier(level)^LEVEL_SCALING_EXPONENT (defensive)
+// and × monsterScalingMultiplier(level) (offensive flat), mirroring item scaling
+// so minions stay relevant without outscaling the player.
+export const MINION = {
+  // Percent of the player's own stat at the same level (per-def multipliers in src/data/minions.ts)
+  LIFE_PERCENT: 0.8,
+  ES_PERCENT: 0.5,
+  ARMOUR_PERCENT: 0.6,
+  EVASION_PERCENT: 0.5,
+  ACCURACY_PERCENT: 1.0,
+  // Damage share: a full army should add ~20-40% player DPS
+  DPS_SHARE_TARGET_MIN: 0.2,
+  DPS_SHARE_TARGET_MAX: 0.4,
+  // Same defensive curve family as gear (BALANCE.md defensive scaling)
+  LEVEL_SCALING_EXPONENT: 0.75,
+  // Army cap across all defs (minion spec §8.1)
+  MAX_SUMMONS_TOTAL: 4,
+} as const
+
 export function gemXpForNextLevel(currentLevel: number): number {
   return GEMS.XP_PER_LEVEL * currentLevel
 }

@@ -11,14 +11,16 @@
 
 import { MONSTERS } from '../src/data/monsters.ts'
 import { ZONES } from '../src/data/zones.ts'
-import { DAMAGE, TICKS_PER_SECOND, monsterScalingMultiplier } from '../src/data/balance.ts'
-import { createItem, recalculateCharacterFromEquipment } from '../src/systems/items.ts'
-import { applyPassiveStats, applyAscendancyStats, allocateNode, getAdjacency, getNode } from '../src/systems/passives.ts'
-import { PASSIVE_TREE } from '../src/data/passiveTree.ts'
-import { CLASSES, CLASS_ROOT_MAP } from '../src/data/classes.ts'
+import { DAMAGE, MINION, TICKS_PER_SECOND, monsterScalingMultiplier } from '../src/data/balance.ts'
+import { estimateMinionDpsShare } from '../src/systems/minions.ts'
+import { buildMinionArmy, buildValidatorCharacter } from '../src/systems/validatorFixture.ts'
 import { SKILLS } from '../src/data/skills.ts'
-import type { Character, ClassId, EquippedSkill, Monster } from '../src/types/game.ts'
-import type { Equipment, Item, ItemRarity } from '../src/types/item.ts'
+import type { Character, Monster } from '../src/types/game.ts'
+import type { ItemRarity } from '../src/types/item.ts'
+
+// Character/army fixtures live in src/systems/validatorFixture.ts so the unit
+// tests measure against the identical player model (minion spec §8.3).
+export { buildValidatorCharacter, buildMinionArmy }
 
 // ---------------------------------------------------------------------------
 // Player power model — REPLACE these with real calls into your own systems
@@ -34,128 +36,6 @@ interface PowerEstimate {
   resistances: Character['resistances']
 }
 
-const SLOT_BASES: Record<keyof Equipment, string> = {
-  weapon: 'rusted_axe',
-  offhand: 'worn_shield',
-  helmet: 'tattered_hood',
-  body: 'battered_chest',
-  gloves: 'fingerless_gloves',
-  boots: 'worn_boots',
-  belt: 'rope_belt',
-  amulet: 'seashell_amulet',
-  ring1: 'iron_ring',
-  ring2: 'iron_ring',
-}
-
-function buildEquipment(level: number, rarity: ItemRarity = 'rare'): Equipment {
-  // Gear rarity gives extra mods; item level controls tier magnitude. The main
-  // campaign table uses rare gear, while the sensitivity report below compares
-  // it against normal and magic gear without changing the gameplay model.
-  const equipment: Equipment = {
-    weapon: null,
-    offhand: null,
-    helmet: null,
-    body: null,
-    gloves: null,
-    boots: null,
-    belt: null,
-    amulet: null,
-    ring1: null,
-    ring2: null,
-  }
-  for (const slot of Object.keys(equipment) as (keyof Equipment)[]) {
-    const baseId = SLOT_BASES[slot]
-    if (!baseId) continue
-    equipment[slot] = createItem(baseId, level, rarity)
-  }
-  return equipment
-}
-
-function allocatePassivesBFS(character: Character, points: number): Character {
-  const adj = getAdjacency(PASSIVE_TREE)
-  const allocated = new Set(character.allocatedNodes)
-  const queue = [...character.allocatedNodes]
-  let c = { ...character }
-  c.passivePoints = points
-
-  while (points > 0 && queue.length > 0) {
-    const current = queue.shift()!
-    const neighbors = adj.get(current) ?? []
-    for (const neighbor of neighbors) {
-      if (!allocated.has(neighbor)) {
-        const node = getNode(PASSIVE_TREE, neighbor)
-        if (!node || node.type === 'root') continue
-        const before = c.allocatedNodes.length
-        c = allocateNode(c, PASSIVE_TREE, neighbor)
-        if (c.allocatedNodes.length > before) {
-          allocated.add(neighbor)
-          queue.push(neighbor)
-          points--
-          if (points <= 0) break
-        }
-      }
-    }
-  }
-  return c
-}
-
-function createDefaultCharacter(classId: ClassId): Character {
-  const gameClass = CLASSES[classId]
-  return {
-    id: 'player_1',
-    name: 'Exile',
-    classId,
-    level: 1,
-    experience: 0,
-    experienceToNext: 100,
-    life: gameClass.baseLife,
-    maxLife: gameClass.baseLife,
-    energyShield: gameClass.baseEnergyShield,
-    maxEnergyShield: gameClass.baseEnergyShield,
-    attributes: { ...gameClass.baseAttributes },
-    resistances: { fire: 0, cold: 0, lightning: 0, chaos: 0 },
-    accuracy: gameClass.baseAccuracy,
-    evasion: gameClass.baseEvasion,
-    armour: gameClass.baseAttributes.strength * 2,
-    attackRate: 1.0,
-    basePhysicalDamageMin: 2,
-    basePhysicalDamageMax: 4,
-    criticalChance: 0.05,
-    criticalMultiplier: 1.5,
-    damageVsBossesPercent: 0,
-    goldFindPercent: 0,
-    chanceToBleed: 0,
-    chanceToShock: 0,
-    chanceToInflictDespair: 0,
-    special: {},
-    isAlive: true,
-    respawnTimer: 0,
-    allocatedNodes: [`root_${CLASS_ROOT_MAP[classId]}`],
-    passivePoints: 0,
-    equippedSkills: [{ skillId: 'strike', supportIds: [], cooldownRemaining: 0, hitCounter: 0 }],
-    ascendancyId: null,
-    allocatedAscendancyNodes: [],
-    keystoneChoices: {},
-    ascendancyPoints: 0,
-    trial1Completed: false,
-    trial2Completed: false,
-    trial3Completed: false,
-    trial4Completed: false,
-    devOverrides: {},
-    ownedGems: [],
-    supportSlotCount: 2,
-    increasedPhysicalDamage: 0,
-    morePhysicalDamage: 1,
-    increasedSpellDamage: 0,
-    moreSpellDamage: 1,
-    increasedAttackSpeed: 0,
-    moreAttackSpeed: 1,
-    increasedAccuracy: 0,
-    lifeRegen: 0,
-    esRecharge: 0,
-  }
-}
-
 function armourMitigation(armour: number, damage: number): number {
   return armour / (armour + 5 * damage)
 }
@@ -164,17 +44,7 @@ function estimatePlayerPower(level: number, threat: Monster, gearRarity: ItemRar
   const originalRandom = Math.random
   Math.random = () => 0.5
   try {
-    let character = createDefaultCharacter('warlord')
-    character.level = level
-    character.passivePoints = level - 1
-    character.allocatedNodes = ['root_warlord']
-
-    const equipment = buildEquipment(level, gearRarity)
-
-    character = allocatePassivesBFS(character, level - 1)
-    character = recalculateCharacterFromEquipment(character, equipment)
-    character = applyPassiveStats(character, PASSIVE_TREE)
-    character = applyAscendancyStats(character)
+    const character = buildValidatorCharacter(level, gearRarity)
 
     // --- DPS: faithful mirror of skillDamage() for a default Heavy Strike ---
     const skill = SKILLS.strike
@@ -375,6 +245,52 @@ for (const zone of sensitivityZones) {
     return `${rarity} ${hitsToDie.toFixed(1)}h/${(mitigation * 100).toFixed(0)}%a/${resistanceLabel} ${verdict}`
   })
   console.log(`  ${zone.id.padEnd(24)} ${profiles.join(' | ')}`)
+}
+
+// ---------------------------------------------------------------------------
+// Minion army DPS share (minion-system-spec.md §8.3): a full 4-member army
+// should contribute ~20-40% of the player's own DPS in every zone.
+// ---------------------------------------------------------------------------
+console.log('\n=== MINION ARMY DPS SHARE ===')
+console.log(
+  `  Full army: 1 Bone Sentinel + 2 Plague Wretches + 1 Rift Wisp | target band ${MINION.DPS_SHARE_TARGET_MIN * 100}-${MINION.DPS_SHARE_TARGET_MAX * 100}%`
+)
+let minionOutOfBand = 0
+// Pin RNG while building the reference character and resolving shares so the
+// report is reproducible (gear affix rolls would otherwise make every run a
+// new sample — estimatePlayerPower does the same).
+const originalRandom = Math.random
+Math.random = () => 0.5
+let minionRows: string[] = []
+try {
+  for (const zone of ZONES) {
+    const pool = zone.monsterIds
+      .map(id => MONSTERS[id])
+      .filter((monster): monster is Monster => Boolean(monster))
+      .map(monster => scaleMonsterToZone(monster, zone.level))
+    const nonBoss = pool.filter(monster => monster.rarity !== 'boss')
+    if (nonBoss.length === 0) continue
+    const threat = nonBoss.reduce((a, b) => (avgDamage(a) > avgDamage(b) ? a : b))
+    const character = buildValidatorCharacter(zone.level)
+    const army = buildMinionArmy(zone.level)
+    const noHerald = estimateMinionDpsShare(character, army, threat, [], false)
+    const withLight = estimateMinionDpsShare(character, army, threat, ['light'], false)
+    const inBand =
+      isFinite(noHerald) && noHerald >= MINION.DPS_SHARE_TARGET_MIN && noHerald <= MINION.DPS_SHARE_TARGET_MAX
+    if (!inBand) minionOutOfBand++
+    const verdict = !isFinite(noHerald) ? 'OVER' : noHerald < MINION.DPS_SHARE_TARGET_MIN ? 'LOW' : 'OVER'
+    minionRows.push(
+      `  ${zone.id.padEnd(24)} no-herald ${(noHerald * 100).toFixed(1)}% ${(inBand ? 'ok' : verdict).padEnd(4)} | +Light ${(withLight * 100).toFixed(1)}%`
+    )
+  }
+} finally {
+  Math.random = originalRandom
+}
+for (const line of minionRows) console.log(line)
+if (minionOutOfBand > 0) {
+  problems.push(
+    `Minion army DPS share is out of the ${MINION.DPS_SHARE_TARGET_MIN * 100}-${MINION.DPS_SHARE_TARGET_MAX * 100}% band in ${minionOutOfBand} zone(s) — retune MINIONS flat damage (spec marks all values (tune)).`
+  )
 }
 
 // 1. TTK drift — the single most important check (exclude boss-only zones).

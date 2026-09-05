@@ -123,7 +123,7 @@ function makeGameState(character: Character, combat: CombatState): GameState {
     inventory: { items: [], maxSize: 60, autoSellNormal: false, autoSellMagic: false } as any,
     equipment: {} as any,
     currencies: {},
-    nexus: { maps: [], activeMapId: null, packsCleared: 0, completedTierRewards: [] },
+    nexus: { maps: [], activeMapId: null, packsCleared: 0, completedTierRewards: [], sovereignUnlocked: false },
     combat,
     lastSaveTime: 0,
     saveVersion: 4,
@@ -132,6 +132,26 @@ function makeGameState(character: Character, combat: CombatState): GameState {
     activeTrial: null,
     tickCounter: 0,
   };
+}
+
+/**
+ * Build an ENGAGED combat state for a phased boss: the pack member exists
+ * (otherwise simulateTick would start a travel beat) and the character is
+ * tanky enough to survive the boss's opening hit.
+ */
+function makeBossCombatState(boss: Monster, lifeFraction: number): GameState {
+  const base = createCombatState(boss);
+  const member = {
+    id: `${boss.id}_0_1`,
+    monster: boss,
+    currentLife: Math.floor(boss.maxLife * lifeFraction),
+    maxLife: boss.maxLife,
+    slot: 0,
+    position: { x: 0, y: 0 },
+  };
+  const combat = { ...base, currentPack: [member], monsterLife: member.currentLife };
+  const tank = makeCharacter({ life: 1e9, maxLife: 1e9 });
+  return makeGameState(tank, combat);
 }
 
 // --- Tests ---
@@ -384,6 +404,7 @@ describe("late campaign survivability fixtures", () => {
       currentLife: fixtureMonster.life,
       maxLife: fixtureMonster.maxLife,
       slot: 0,
+      position: { x: 0, y: 0 },
     }
     const fixtureCombat: CombatState = {
       ...makeCombat(fixtureMonster),
@@ -453,6 +474,179 @@ describe("pack and named-elite system", () => {
     }
   });
 
+  it("seeds a solo encounter for a boss-only zone regardless of pack-size roll", () => {
+    // Boss pools (act-end arenas) must never be multiplied into a pack of clones.
+    const bossZone = makeZone({
+      id: "boss_arena",
+      monsterIds: ["shore_warden"], // hand-tuned boss template
+      eliteChance: 0,
+      killsRequired: 1,
+    });
+    const randomMock = spyOn(Math, "random").mockReturnValue(0.99); // forces rollPackSize -> 4
+    try {
+      const { combat: nextCombat, monster } = spawnMonster(bossZone, makeCombat());
+      expect(nextCombat.packSizeRemaining).toBe(1);
+      expect(nextCombat.currentPack.length).toBe(1);
+      expect(monster.rarity).toBe("boss");
+      // Boss stands centered on the approach axis, just north of the waypoint
+      // (the party arrives at the waypoint itself) — never on the party spot.
+      const boss = nextCombat.currentPack[0];
+      expect(boss.position.x).toBe(nextCombat.waypoint.x);
+      expect(boss.position.y).toBe(nextCombat.waypoint.y - 6);
+    } finally {
+      randomMock.mockRestore();
+    }
+  });
+
+  it("scatters regular packs north of the waypoint (non-boss zones unaffected)", () => {
+    const zone = makeZone({ eliteChance: 0 });
+    const randomMock = spyOn(Math, "random").mockReturnValue(0); // pack size 4
+    try {
+      const { combat: nextCombat } = spawnMonster(zone, makeCombat());
+      expect(nextCombat.currentPack.length).toBe(4);
+      for (const member of nextCombat.currentPack) {
+        expect(member.position.y).toBeLessThan(nextCombat.waypoint.y);
+      }
+    } finally {
+      randomMock.mockRestore();
+    }
+  });
+
+  it("places a seeded named elite at the front of the formation on the waypoint axis", () => {
+    // eliteChance 1 guarantees the first slot rolls the named-elite template.
+    const eliteZone = makeZone({ act: 1, level: 20, eliteChance: 1 });
+    const randomMock = spyOn(Math, "random").mockReturnValue(0); // pack size 4
+    try {
+      const { combat: nextCombat } = spawnMonster(eliteZone, makeCombat());
+      const front = nextCombat.currentPack[0];
+      expect(front.monster.isNamedElite).toBe(true);
+      // Front member of the formation stands on the waypoint axis (slot 0
+      // offset), just past the party's arrival spot.
+      expect(front.position.x).toBe(nextCombat.waypoint.x);
+      expect(front.position.y).toBeLessThan(nextCombat.waypoint.y);
+    } finally {
+      randomMock.mockRestore();
+    }
+  });
+
+  it("engages swarm-tagged monsters in oversized packs of 4-8", () => {
+    // Ashfall Flats contains cinder_swarm (swarm-tagged, Stage 4).
+    const swarmZone = makeZone({
+      monsterIds: ["ashwalker", "cinder_swarm", "emberpriest"],
+      eliteChance: 0,
+    });
+    // Different mock rolls must all produce size 4-8 (swarm branch ignores
+    // the normal 1-4 weighting).
+    for (const roll of [0, 0.25, 0.5, 0.75, 0.99]) {
+      const randomMock = spyOn(Math, "random").mockReturnValue(roll);
+      try {
+        const { combat: nextCombat } = spawnMonster(swarmZone, makeCombat());
+        expect(nextCombat.packSizeRemaining).toBeGreaterThanOrEqual(4);
+        expect(nextCombat.packSizeRemaining).toBeLessThanOrEqual(8);
+      } finally {
+        randomMock.mockRestore();
+      }
+    }
+  });
+
+  it("seeds swarm packs in the wedge formation (rows of 3 north of the waypoint)", () => {
+    const swarmZone = makeZone({
+      monsterIds: ["crypt_rat"], // swarm-tagged pool
+      eliteChance: 0,
+    });
+    const randomMock = spyOn(Math, "random").mockReturnValue(0); // swarm size 4
+    try {
+      const { combat: nextCombat } = spawnMonster(swarmZone, makeCombat());
+      expect(nextCombat.currentPack.length).toBe(4);
+      // Row 0: slots 0-2 share a depth line; slot 3 is the next row north.
+      expect(nextCombat.currentPack[0].position.y).toBe(nextCombat.currentPack[1].position.y);
+      expect(nextCombat.currentPack[1].position.y).toBe(nextCombat.currentPack[2].position.y);
+      expect(nextCombat.currentPack[3].position.y).toBeLessThan(nextCombat.currentPack[0].position.y);
+      // All members north of the waypoint, never on the party spot.
+      for (const member of nextCombat.currentPack) {
+        expect(member.position.y).toBeLessThan(nextCombat.waypoint.y);
+      }
+    } finally {
+      randomMock.mockRestore();
+    }
+  });
+
+  it("crosses boss phases at health thresholds, applying overrides and emitting bossPhaseChanged once per threshold", () => {
+    // Aurelius (Act 8) carries phase data: 0.6 then 0.25.
+    const boss = { ...MONSTERS["aurelius_arbiter"] } as Monster;
+
+    // Above both thresholds: no phase.
+    let result = simulateTick(makeBossCombatState(boss, 0.8));
+    expect(result.events.some(e => e.type === "bossPhaseChanged")).toBe(false);
+
+    // Cross 60%: phase 1 fires exactly once.
+    result = simulateTick(makeBossCombatState(boss, 0.55));
+    const phase1Events = result.events.filter(e => e.type === "bossPhaseChanged");
+    expect(phase1Events.length).toBe(1);
+    expect((phase1Events[0] as any).phaseIndex).toBe(1);
+    // The live monster gained the phase's chaos component.
+    expect(result.state.combat.monster!.damage.length).toBeGreaterThan(boss.damage.length);
+    expect(result.state.combat.bossPhaseIndex).toBe(1);
+
+    // Cross 25% from phase 1: phase 2 fires with phaseIndex 2.
+    result = simulateTick({ ...result.state, combat: { ...result.state.combat, monsterLife: Math.floor(boss.maxLife * 0.2) } });
+    const phase2Events = result.events.filter(e => e.type === "bossPhaseChanged");
+    expect(phase2Events.length).toBe(1);
+    expect((phase2Events[0] as any).phaseIndex).toBe(2);
+
+    // No re-fire below the deepest threshold.
+    result = simulateTick({ ...result.state, combat: { ...result.state.combat, monsterLife: Math.floor(boss.maxLife * 0.1) } });
+    expect(result.events.some(e => e.type === "bossPhaseChanged")).toBe(false);
+  });
+
+  it("resets the boss phase tracker between encounters", () => {
+    const boss = { ...MONSTERS["aurelius_arbiter"] } as Monster;
+    // Pack advancement (and therefore the travel beat) only runs inside a
+    // zone — mirror production, where the player always fights inside one.
+    const bossZone: Zone = {
+      id: "final_verdict",
+      name: "Aurelius, the Arbiter",
+      act: 8,
+      level: 65,
+      monsterIds: ["aurelius_arbiter"],
+      eliteChance: 0,
+      killProgress: 0,
+      killsRequired: 1,
+      unlocked: true,
+    };
+
+    // Cross phases mid-fight, then kill the boss; the travel beat that
+    // follows must reset the tracker for the next encounter. Damage is sized
+    // so the fight lasts a few ticks (phases fire before the kill), and the
+    // mocked roll guarantees hits land at all.
+    let state = { ...makeBossCombatState(boss, 0.55), zones: [bossZone], activeZoneId: bossZone.id };
+    state = {
+      ...state,
+      character: {
+        ...state.character,
+        equippedSkills: [makeEquippedSkill(makeSkill({ id: "strike", tags: ["attack", "physical", "melee"] }))],
+        devOverrides: { attackRate: 6, basePhysicalDamageMin: 3e6, basePhysicalDamageMax: 3e6, criticalChance: 1 },
+      },
+    };
+    expect(state.combat.bossPhaseIndex).toBe(0);
+    let cleared = false;
+    let sawPhase = false;
+    const randomMock = spyOn(Math, "random").mockReturnValue(0); // always hit
+    try {
+      for (let i = 0; i < 50 && !cleared; i++) {
+        const next = simulateTick(state);
+        state = next.state;
+        if (next.events.some(e => e.type === "bossPhaseChanged")) sawPhase = true;
+        cleared = next.events.some(e => e.type === "travelStarted");
+      }
+    } finally {
+      randomMock.mockRestore();
+    }
+    expect(sawPhase).toBe(true);
+    expect(cleared).toBe(true);
+    expect(state.combat.bossPhaseIndex).toBe(0);
+  });
+
   it("caps named elites at 1 per pack for acts 1-7 and 2 for act 8+", () => {
     const lowActZone = makeZone({ act: 3, level: 20, eliteChance: 1 });
     const highActZone = makeZone({ act: 8, level: 60, eliteChance: 1 });
@@ -509,6 +703,7 @@ describe("pack and named-elite system", () => {
         currentLife: monster.life,
         maxLife: monster.maxLife,
         slot: overrides.slot,
+        position: { x: 0, y: 0 },
       };
     }
 
@@ -606,6 +801,7 @@ describe("skill range bands (pack multi-hit)", () => {
       currentLife: monster.life,
       maxLife: monster.maxLife,
       slot: overrides.slot,
+      position: { x: 0, y: 0 },
     };
   }
 
@@ -693,5 +889,64 @@ describe("skill range bands (pack multi-hit)", () => {
     randomMock.mockRestore();
 
     expect(events.filter(e => e.type === "bandHit").length).toBe(0);
+  });
+});
+
+// --- Nexus Stage 4: the Primeval Sovereign (pinnacle boss arena) ---
+
+describe("Primeval Sovereign kill rewards", () => {
+  it("pays 25 Rift Crystals and a guaranteed unique on the Sovereign kill", () => {
+    const sovereign = { ...MONSTERS["primeval_sovereign"] } as Monster;
+    expect(sovereign.rarity).toBe("boss");
+
+    const state = makeBossCombatState(sovereign, 0.01);
+    const sanctumZone = {
+      id: "primeval_sanctum",
+      name: "The Primeval Sanctum",
+      act: 9,
+      level: 141,
+      monsterIds: ["primeval_sovereign"],
+      eliteChance: 0,
+      killProgress: 0,
+      killsRequired: 1,
+      unlocked: true,
+    } as Zone;
+
+    // Guaranteed hit, no crit, no map-affix crystal roll (0.5 > drop chance).
+    const randomMock = spyOn(Math, "random").mockReturnValue(0.5);
+    // The store's devSetStats applies overrides to the live character
+    // immediately; mirror that here so the single tick fights with the
+    // boosted stats instead of warming up for one tick first.
+    const devStats = { attackRate: 6, basePhysicalDamageMin: 1e8, basePhysicalDamageMax: 1e8, criticalChance: 0 };
+    try {
+      const { state: nextState, events } = simulateTick({
+        ...state,
+        zones: [sanctumZone],
+        activeZoneId: sanctumZone.id,
+        character: {
+          ...state.character,
+          equippedSkills: [makeEquippedSkill(makeSkill({ id: "strike", tags: ["attack", "physical", "melee"] }))],
+          ...devStats,
+          devOverrides: devStats,
+        },
+      });
+
+      expect(events.some(e => e.type === "bossDefeated")).toBe(true);
+      // The Sanctum sits outside Act 8, so the payout is the approved 25-crystal
+      // pinnacle reward alone (no Act-8 boss crystal).
+      const crystalEvents = events.filter(e => e.type === "riftCrystalGained");
+      expect(crystalEvents.length).toBe(1);
+      expect((crystalEvents[0] as any).amount).toBe(25);
+      expect(nextState.currencies["rift_crystal"]).toBe(25);
+      // The guaranteed unique drops into the inventory (level 141 item) next to
+      // the encounter's regular level-141 drop.
+      const dropEvents = events.filter(e => e.type === "itemDropped");
+      expect(dropEvents.some(e => (e as any).rarity === "unique")).toBe(true);
+      const uniqueDrop = nextState.inventory.items.find(item => item.rarity === "unique");
+      expect(uniqueDrop).toBeDefined();
+      expect(uniqueDrop!.itemLevel).toBe(141);
+    } finally {
+      randomMock.mockRestore();
+    }
   });
 });

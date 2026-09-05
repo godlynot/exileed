@@ -7,6 +7,7 @@ export function DevTools() {
   const devSetLevel = useGameStore(state => state.devSetLevel)
   const devSetStats = useGameStore(state => state.devSetStats)
   const devSpawnTestPack = useGameStore(state => state.devSpawnTestPack)
+  const devGrantSummonGems = useGameStore(state => state.devGrantSummonGems)
   const [customLevel, setCustomLevel] = useState(character.level)
   const [itemDiagnostic, setItemDiagnostic] = useState<{ violations: ItemViolation[]; total: number; equipped: number } | null>(null)
 
@@ -168,6 +169,15 @@ export function DevTools() {
         </button>
         <p className="text-[10px] text-gray-500 mt-1">
           Replaces the current pack with one of each rarity so glow/badge distinctions can be checked.
+        </p>
+        <button
+          onClick={devGrantSummonGems}
+          className="mt-2 w-full px-3 py-2 bg-emerald-900/40 hover:bg-emerald-900/60 border border-emerald-700/50 rounded text-xs text-emerald-200"
+        >
+          Grant All Summon Gems
+        </button>
+        <p className="text-[10px] text-gray-500 mt-1">
+          Adds the three summon skills to owned gems so they can be equipped in the Skills panel.
         </p>
       </div>
 

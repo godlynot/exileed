@@ -373,4 +373,19 @@ export const ZONES: Zone[] = [
     killsRequired: 1,
     unlocked: false,
   },
+
+  // --- Nexus Stage 4: The Primeval Sanctum (pinnacle boss arena) ---
+  // Lives outside the act list; unlocks on the first T16 map clear via
+  // grantSovereignUnlock and renders in its own section of the Acts panel.
+  {
+    id: 'primeval_sanctum',
+    name: 'The Primeval Sanctum',
+    act: 9,
+    level: 141, // T16 map level
+    monsterIds: ['primeval_sovereign'],
+    eliteChance: 0.0,
+    killProgress: 0,
+    killsRequired: 1,
+    unlocked: false,
+  },
 ]

@@ -3,6 +3,7 @@ import { computeOfflineSeconds, simulateOfflineProgress } from './offlineProgres
 import { createInitialState } from '../store/gameStore.ts'
 import { OFFLINE_PROGRESS_MAX_HOURS, OFFLINE_PROGRESS_MIN_SECONDS } from '../data/balance.ts'
 import { consumeGeneratedDrops } from './items.ts'
+import { summonMinion, killMinion, reviveAllSummons } from './minions.ts'
 
 describe('computeOfflineSeconds', () => {
   const now = 1_800_000_000_000
@@ -93,5 +94,28 @@ describe('simulateOfflineProgress', () => {
     await simulateOfflineProgress(state, 3600, p => progresses.push(p))
     expect(progresses.length).toBeGreaterThan(0)
     expect(progresses[progresses.length - 1]).toBe(1)
+  })
+
+  it('revives dead minions on claim at the post-sim level (§10.2)', async () => {
+    const state = createInitialState('warlord')
+    state.gamePhase = 'playing'
+    // A dead army with respawn timers still running: offline time elapses them.
+    let character = summonMinion(state.character, 'bone_sentinel').character
+    character = summonMinion(character, 'rift_wisp').character
+    character = killMinion(character, 'bone_sentinel').character
+    character = killMinion(character, 'rift_wisp').character
+    state.character = character
+    expect(state.character.summons.every(s => !s.alive)).toBe(true)
+
+    const result = await simulateOfflineProgress(state, 300)
+
+    const summons = result.state.character.summons
+    expect(summons).toHaveLength(2)
+    expect(summons.every(s => s.alive)).toBe(true)
+    expect(summons.every(s => s.respawnTicksRemaining === 0)).toBe(true)
+    // Fresh-cast parity: revived at the character's final level.
+    expect(summons.every(s => s.level === result.state.character.level)).toBe(true)
+    // Sanity: the pure helper agrees with the integrated path.
+    expect(reviveAllSummons(character).summons.every(s => s.alive)).toBe(true)
   })
 })

@@ -10,7 +10,7 @@
 |---|---|
 | **Game** | *Rift Idler* — an idle/incremental ARPG inspired by Path of Exile systems |
 | **Repo** | `godlynot/exileed` |
-| **Milestone** | M4.5 and campaign complete; Nexus Stages 1–3 shipped; Stage 3 first-clear milestone rewards use Rift Crystals |
+| **Milestone** | M4.5 and campaign complete; Nexus Stages 1–3 shipped; Spatial combat Stages 1–4 complete (travel + pack map + boss arenas + elite formation + swarms) |
 | **Stack** | React 19, Vite, TypeScript, Tailwind CSS, Zustand, Framer Motion |
 | **Persistence** | `localStorage` only (autosave every ~30s) |
 | **Entry** | `src/main.tsx` → `src/App.tsx` |
@@ -115,7 +115,7 @@ Key formulas:
 - Supports only apply if their allowed tags overlap with the skill's tags
 - Supports add flat/increased/more stat mods, scaled by support gem level
 - Player has 4 skill slots; each skill slot has a skill + support slots
-- `supportSlotCount` grows with campaign: 2 → 3 → 4 → 5 at acts 3, 6, 9
+- `supportSlotCount` grows with campaign: 2 → 3 → 4 → 5 at acts 3, 6, 8 (the campaign's last act; both live play and offline sim read the same `supportSlotCountForCompletedActs` helper in balance.ts)
 - **Gem XP/leveling:** Skill and support gems gain XP when the skill fires and hits. They level independently up to level 20. Higher level = higher base skill damage (+3% per level) and stronger support modifiers (+2% per level). XP requirements scale with `GEMS.XP_PER_LEVEL * level`. Levels and XP are shown in `SkillsPanel.tsx` and `gemLeveledUp` events appear in the combat log.
 
 ### 4.5 Passive Tree
@@ -205,7 +205,42 @@ Ascendancy mechanics wired in `combat.ts` / `passives.ts`:
 - `loadGame()` is called during app boot and offline progress is simulated in the startup overlay
 - Save loading rejects malformed/future payloads and normalizes Nexus maps, gem IDs/levels, equipped skill slots, support compatibility, and runtime counters before the store consumes them
 
-### 4.10 Nexus Endgame
+### 4.10 Spatial Combat (Stage 1)
+
+The owner lifted the spatial-combat deferral; Stage 1 is shipped. **Architecture rule: the simulation owns time, the renderer owns pixels.**
+
+- `simulateTick` has `phase: 'engaged' | 'traveling'`. On pack clear, `beginTravelToNextPack` picks a waypoint (`nextWaypoint`, forward-biased with lateral jitter), computes `ceil(distance / movementSpeed)` travel ticks, and the next pack seeds only on arrival (`spawnMonster` at the waypoint). No attacks in either direction while traveling; regen, ES recharge, DOTs, and Momentum decay keep ticking on their normal timers.
+- Offline progress simulates travel ticks like any other tick, so away-time cannot clear faster than online play — movement speed is a real clear-rate stat.
+- Speed math: `effectiveMovementSpeed` (balance.ts `MOVEMENT`: BASE_SPEED 4, BASE_TRAVEL_DISTANCE 20 ±20% jitter, +100% increased-pool cap) × Momentum action-speed. Sources: `movement_speed` affix (boots/belt) and `inc_movement_speed_percent` passives.
+- Pack placement: `placePackAtWaypoint` spreads monsters north of the waypoint (`packMemberOffsets` in `systems/spatial.ts`); positions are transient and reset on load (save schema carries nothing positional).
+- Renderer: `components/PackMap.tsx` replaced `PackLane.tsx`. It projects sim positions (`playerWorldPosition` interpolation, `worldToScreen` clamping, `resolveMarkerOverlaps` for swarm stacking) and never computes gameplay. Travel beat: ground-grid scroll + pulsing waypoint dot. Unit tests in `components/PackMap.test.ts`.
+
+### 4.10b Spatial Boss Encounters (Stage 2)
+
+- **Boss-only zones are solo encounters.** `seedPack` treats a zone whose entire `monsterIds` pool is boss-rarity as a boss arena: pack size is fixed at 1 (never rolls 2–4), and the boss is placed on the approach axis `BOSS_ARENA_OFFSET_Y` (6 units) north of the waypoint — the party arrives at the waypoint itself, approaching from the south. Regular packs still scatter via `placePackAtWaypoint`.
+- This also fixed a latent bug: boss arenas (e.g. `ruined_bastion`) could previously roll multi-boss packs because `rollPackSize` was not boss-aware. Nexus map pools already filter boss-rarity templates (`nexus.ts`), so maps are unaffected.
+- Renderer: `BossMarker` in `PackMap.tsx` gives bosses an oversized gold-ringed marker, pulsing arena ring, and a full nameplate with a wide HP bar; the header target line shows a Boss badge. `BOSS_ARENA_OFFSET_Y` lives in `systems/spatial.ts` and is inside the renderer's projection budget so the boss never clamps off-panel.
+- Smoke coverage: `bun run smoke:spatial` section 4 drives a real campaign boss zone (`ruined_bastion`) through `spawnMonster`.
+
+### 4.10c Elite-Led Formations (Stage 3)
+
+- **Named elites engage first.** `leadWithElite` (`systems/spatial.ts`) moves a pack's named elite to `currentPack[0]` at seed time and renumbers slots, so band targeting, pack advancement, and the renderer's front-marker all agree: the elite is what the party fights first. Non-elites keep their relative order; input is returned untouched when no elite is present or it already leads. First elite wins when a pack rolls two (Act 8+ cap).
+- Purely an ordering rule — `bandHit` counts, elite stat rolls, aura application, and drop logic are untouched; only the seed-time array order changes.
+- Renderer: named elites keep the 👑 badge and gain an orange pulsing mini-arena ring plus a compact nameplate; the header shows an orange **Elite** badge when the current target is a named elite.
+- Smoke coverage: `bun run smoke:spatial` section 5 drives a real elite zone (`shattered_coast`) and verifies elite-lead order, slot renumbering, and axis placement.
+
+### 4.10d Swarm Encounters (Stage 4)
+
+- **Swarm-tagged monsters engage 4–8** (spec: "4-8 for swarm-tagged monsters"). The roster lives in `data/swarmMonsters.ts` (`SWARM_MONSTER_IDS`: `cinder_swarm`, `crypt_rat`; extend the set to tag more templates). A zone whose pool contains any swarm template rolls swarm packs of `4 + floor(rand*5)` instead of the normal 1–4; mixed pools simply engage oversized when a swarm member leads the roll.
+- **Wedge formation:** swarm packs place via `swarmWedgeOffsets` (rows of 3 front-to-back, tighter and wider than the loose scatter) so the crowd reads as a swarm; the renderer's `resolveMarkerOverlaps` already keeps 8 markers from stacking.
+- Sizing is a pure pacing change — individual swarm monsters keep their hand-tuned low-life templates, and band targeting caps (`farRange` 3, `nearRange` 2) are unchanged, so AoE skills get relatively better into swarms exactly as the spec intends.
+- Smoke coverage: `bun run smoke:spatial` section 6 drives a real swarm zone (`ashfall_flats`) and verifies the 4–8 size spread plus wedge geometry.
+
+### 4.10e Spatial Plan Status
+
+All four stages shipped: Stage 1 travel phase + PackMap renderer, Stage 2 boss arenas, Stage 3 elite-led formations, Stage 4 swarm encounters. Future spatial work (crowd AI, formation targeting) is not scheduled — do not build without an approved spec.
+
+### 4.11 Nexus Endgame
 
 - Stage 1 is shipped in `src/systems/nexus.ts`: Rift Crystals, tiered map items, charges, map entry, pack progression, completion return, and Act 8 boss rewards.
 - Stage 2 is shipped: maps roll affixes from `src/data/mapAffixes.ts`, and those effects modify Nexus monster stats and rewards.
@@ -226,11 +261,11 @@ Ascendancy mechanics wired in `combat.ts` / `passives.ts`:
 - M5 offline progress and startup save loading
 - Nexus Stages 1–2: Rift Crystals, tiered maps, charges, map affixes, map entry/completion, and run-status UI
 - Twin Heralds and Herald of Gold item bonuses
+- Spatial combat Stages 1–4: travel phases, top-down PackMap, boss arenas, elite-led formations, swarm encounters (see §4.10–4.10e)
 - Build/typecheck/validation pass
 
 **Open / next:**
 
-- Nexus Stage 3: shipped first-clear tier milestones (T5/T10/T15/T16) with persistent Rift Crystal rewards and UI/log feedback
 - Nexus Stage 4: approve and implement the Primeval Sovereign encounter
 - Herald/Marshal party-set effects (v1 self-buff limitation documented in `combat.ts`)
 - 6 unique items with hand-designed bases, unique effects, and named-elite drops
@@ -280,4 +315,4 @@ bun run validate:ascendancies
 ---
 
 *Generated: 2026-07-22*
-*Last updated: 2026-08-09 (Nexus Stage 3 milestone rewards shipped)*
+*Last updated: 2026-09-04 (Spatial combat Stages 1–4 complete — travel, pack map, boss arenas, elite formations, swarms; support-slot act-8 cap unified across live/offline)*
